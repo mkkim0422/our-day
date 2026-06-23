@@ -10,6 +10,7 @@ import '../../core/utils/age_label.dart';
 import '../capture/alignment_meta.dart';
 import '../home/home_providers.dart';
 import 'collage_poster_screen.dart';
+import 'growth_chart_screen.dart';
 import 'onion_skin_screen.dart';
 import 'widgets/timelapse_player.dart';
 
@@ -154,6 +155,16 @@ class _CompareViewState extends ConsumerState<CompareView> {
           ),
           icon: const Icon(Icons.grid_view_rounded),
           label: const Text('성장 포스터 만들기'),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => GrowthChartScreen(project: widget.project),
+            ),
+          ),
+          icon: const Icon(Icons.show_chart),
+          label: const Text('성장 차트 (키)'),
         ),
       ],
     );

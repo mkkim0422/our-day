@@ -83,6 +83,20 @@ class AppSettingsController extends AsyncNotifier<AppSettingsData> {
     await _store?.save(next);
     state = AsyncData(next);
   }
+
+  /// 촬영별 키(cm) 기록 설정/해제(아이디어8 — 성장 차트).
+  Future<void> setCaptureHeight(String captureId, double? cm) async {
+    final current = state.value ?? const AppSettingsData();
+    final map = Map<String, double>.from(current.captureHeights);
+    if (cm == null) {
+      map.remove(captureId);
+    } else {
+      map[captureId] = cm;
+    }
+    final next = current.copyWith(captureHeights: map);
+    await _store?.save(next);
+    state = AsyncData(next);
+  }
 }
 
 /// 로컬 알림 서비스(단일 인스턴스). main에서 init() 후 화면들이 공유.

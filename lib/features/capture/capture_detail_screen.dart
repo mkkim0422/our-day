@@ -89,8 +89,9 @@ class _CaptureDetailScreenState extends ConsumerState<CaptureDetailScreen> {
 
   Widget _infoBar(BuildContext context) {
     final hasNote = _note != null && _note!.isNotEmpty;
-    final birthday =
-        ref.watch(appSettingsProvider).value?.projectBirthdays[widget.project.id];
+    final settings = ref.watch(appSettingsProvider).value;
+    final height = settings?.captureHeights[widget.capture.id];
+    final birthday = settings?.projectBirthdays[widget.project.id];
     final age = birthday != null
         ? AgeLabel.format(birthday, widget.capture.capturedAt)
         : null;
@@ -126,6 +127,31 @@ class _CaptureDetailScreenState extends ConsumerState<CaptureDetailScreen> {
                         color: hasNote ? Colors.white : Colors.white38,
                         fontStyle: hasNote ? FontStyle.normal : FontStyle.italic,
                       ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // 키 기록(아이디어8 — 성장 차트 데이터).
+          InkWell(
+            onTap: _editHeight,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  const Icon(Icons.straighten,
+                      color: Colors.white54, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    height != null
+                        ? '키 ${height.toStringAsFixed(1)} cm'
+                        : '키 기록하기',
+                    style: TextStyle(
+                      color: height != null ? Colors.white : Colors.white38,
+                      fontStyle:
+                          height != null ? FontStyle.normal : FontStyle.italic,
                     ),
                   ),
                 ],
@@ -183,6 +209,40 @@ class _CaptureDetailScreenState extends ConsumerState<CaptureDetailScreen> {
     if (mounted) {
       setState(() => _note = result.trim().isEmpty ? null : result.trim());
     }
+  }
+
+  Future<void> _editHeight() async {
+    final current =
+        ref.read(appSettingsProvider).value?.captureHeights[widget.capture.id];
+    final controller =
+        TextEditingController(text: current?.toString() ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('키 기록 (cm)'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(hintText: '예: 92.5', suffixText: 'cm'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text),
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return;
+    final cm = double.tryParse(result.trim());
+    await ref
+        .read(appSettingsProvider.notifier)
+        .setCaptureHeight(widget.capture.id, cm);
   }
 
   Future<void> _share() async {
