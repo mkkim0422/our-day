@@ -17,3 +17,14 @@ final capturesProvider = StreamProvider.family<List<Capture>, String>(
   (ref, projectId) =>
       ref.watch(captureRepositoryProvider).watchByProject(projectId),
 );
+
+/// 현재 홈에 표시할 프로젝트 id(여러 프로젝트 전환용). null이면 가장 최근 것.
+class SelectedProjectId extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void select(String? id) => state = id;
+}
+
+final selectedProjectIdProvider =
+    NotifierProvider<SelectedProjectId, String?>(SelectedProjectId.new);

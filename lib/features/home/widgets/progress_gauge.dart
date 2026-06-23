@@ -28,8 +28,10 @@ class ProgressGauge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        // 회색빛 대신 브랜드 톤의 따뜻한 연한 배경.
+        color: scheme.primaryContainer.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.12)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

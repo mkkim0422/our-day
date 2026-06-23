@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ads/ad_slot.dart';
+import '../../core/theme/app_theme.dart';
 import '../../data/db/app_database.dart';
 import '../capture/backfill_screen.dart';
 import '../capture/capture_detail_screen.dart';
 import '../capture/capture_screen.dart';
 import '../compare/compare_screen.dart';
+import '../onboarding/new_project_screen.dart';
 import '../settings/settings_screen.dart';
 import 'home_providers.dart';
 import 'widgets/progress_gauge.dart';
@@ -29,7 +31,23 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(project.title),
+        // 제목 탭 → 프로젝트 전환/새 프로젝트 만들기.
+        title: InkWell(
+          onTap: () => _openProjectSwitcher(context),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(project.title, overflow: TextOverflow.ellipsis),
+                ),
+                const Icon(Icons.arrow_drop_down),
+              ],
+            ),
+          ),
+        ),
         actions: [
           if (canCompare)
             IconButton(
@@ -115,6 +133,25 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
+  /// 프로젝트 전환 시트 — 다른 프로젝트로 바꾸거나 새로 만든다.
+  Future<void> _openProjectSwitcher(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => _ProjectSwitcherSheet(currentId: project.id),
+    );
+  }
+
+  /// 새 프로젝트 만들기 → 생성되면 그 프로젝트로 전환.
+  static Future<void> createProject(BuildContext context, WidgetRef ref) async {
+    final created = await Navigator.of(context).push<Project>(
+      MaterialPageRoute(builder: (_) => const NewProjectScreen()),
+    );
+    if (created != null) {
+      ref.read(selectedProjectIdProvider.notifier).select(created.id);
+    }
+  }
+
   Future<void> _openCapture(
     BuildContext context,
     WidgetRef ref,
@@ -132,7 +169,8 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-/// "이번 기간 한 컷" CTA 카드 — 안 찍었으면 강조, 찍었으면 완료 표시(② 화면).
+/// "이번 기간 한 컷" CTA 카드 — 안 찍었으면 브랜드 그라데이션으로 강조,
+/// 찍었으면 부드러운 완료 카드(② 화면).
 class _CtaCard extends StatelessWidget {
   const _CtaCard({required this.done, required this.onTap});
   final bool done;
@@ -142,49 +180,84 @@ class _CtaCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
+    final radius = BorderRadius.circular(22);
+
+    // 색/배경: 미촬영=생기 있는 그라데이션, 완료=따뜻한 연한 톤.
+    final fg = done ? scheme.onSurface : Colors.white;
+    final subFg = done
+        ? scheme.onSurfaceVariant
+        : Colors.white.withValues(alpha: 0.92);
+
+    final decoration = done
+        ? BoxDecoration(
+            color: scheme.primaryContainer.withValues(alpha: 0.45),
+            borderRadius: radius,
+          )
+        : BoxDecoration(
+            borderRadius: radius,
+            gradient: const LinearGradient(
+              colors: AppTheme.brandGradient,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.brandGradient.last.withValues(alpha: 0.35),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          );
 
     return Material(
-      color: done ? scheme.surfaceContainerHighest : scheme.primaryContainer,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Icon(
-                done ? Icons.check_circle : Icons.camera_alt_rounded,
-                size: 40,
-                color: done ? scheme.primary : scheme.onPrimaryContainer,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      done ? '이번 기간 촬영 완료' : '이번 기간 한 컷 찍기',
-                      style: text.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: done ? scheme.onSurface : scheme.onPrimaryContainer,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      done ? '다시 찍어 더 좋은 컷으로 바꿀 수 있어요' : '같은 포즈로 그날의 우리를 남겨요',
-                      style: text.bodySmall?.copyWith(
-                        color: done
-                            ? scheme.onSurfaceVariant
-                            : scheme.onPrimaryContainer.withValues(alpha: 0.8),
-                      ),
-                    ),
-                  ],
+      color: Colors.transparent,
+      child: Ink(
+        decoration: decoration,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: done
+                        ? scheme.primary.withValues(alpha: 0.15)
+                        : Colors.white.withValues(alpha: 0.22),
+                  ),
+                  child: Icon(
+                    done ? Icons.check_rounded : Icons.camera_alt_rounded,
+                    size: 28,
+                    color: done ? scheme.primary : Colors.white,
+                  ),
                 ),
-              ),
-              Icon(Icons.chevron_right,
-                  color: done ? scheme.onSurfaceVariant : scheme.onPrimaryContainer),
-            ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        done ? '이번 기간 촬영 완료' : '이번 기간 한 컷 찍기',
+                        style: text.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800, color: fg),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        done
+                            ? '다시 찍어 더 좋은 컷으로 바꿀 수 있어요'
+                            : '같은 포즈로 그날의 우리를 남겨요',
+                        style: text.bodySmall?.copyWith(color: subFg),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: fg),
+              ],
+            ),
           ),
         ),
       ),
@@ -299,6 +372,55 @@ class _EmptyTimeline extends StatelessWidget {
             onPressed: onBackfill,
             icon: const Icon(Icons.library_add_outlined),
             label: const Text('예전 사진으로 한번에 채우기'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 프로젝트 전환/추가 바텀시트.
+class _ProjectSwitcherSheet extends ConsumerWidget {
+  const _ProjectSwitcherSheet({required this.currentId});
+  final String currentId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final projects = ref.watch(projectsProvider).value ?? const [];
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('기록 프로젝트',
+                  style: Theme.of(context).textTheme.titleMedium),
+            ),
+          ),
+          for (final p in projects)
+            ListTile(
+              leading: Icon(
+                p.id == currentId
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              title: Text(p.title),
+              onTap: () {
+                ref.read(selectedProjectIdProvider.notifier).select(p.id);
+                Navigator.of(context).pop();
+              },
+            ),
+          const Divider(height: 8),
+          ListTile(
+            leading: const Icon(Icons.add),
+            title: const Text('새 프로젝트 만들기'),
+            onTap: () async {
+              Navigator.of(context).pop();
+              await HomeScreen.createProject(context, ref);
+            },
           ),
         ],
       ),

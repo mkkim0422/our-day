@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../branding/app_logo.dart';
+import '../core/theme/app_theme.dart';
 import '../data/repositories/providers.dart';
 import '../services/location/place_recall.dart';
 import '../services/notifications/notification_service.dart';
@@ -122,8 +124,13 @@ class _RootScreenState extends ConsumerState<RootScreen>
       ),
       data: (projects) {
         if (projects.isEmpty) return const _WelcomeScreen();
-        // MVP는 단일 사용자 — 가장 최근 프로젝트를 홈으로(전환 UI는 v1.5).
-        return HomeScreen(project: projects.first);
+        // 선택된 프로젝트(없거나 삭제됐으면 가장 최근 것)를 홈으로.
+        final selectedId = ref.watch(selectedProjectIdProvider);
+        final current = projects.firstWhere(
+          (p) => p.id == selectedId,
+          orElse: () => projects.first,
+        );
+        return HomeScreen(project: current);
       },
     );
   }
@@ -172,8 +179,23 @@ class _WelcomeScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Spacer(),
-              Icon(Icons.camera_outlined, size: 72, color: scheme.primary),
-              const SizedBox(height: 20),
+              // 브랜드 로고 배지(그라데이션 원 + 카메라·하트).
+              Center(
+                child: Container(
+                  width: 116,
+                  height: 116,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: AppTheme.brandGradient,
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: const Center(child: AppLogoMark(size: 78)),
+                ),
+              ),
+              const SizedBox(height: 24),
               Text('그날 우리', textAlign: TextAlign.center, style: text.headlineMedium),
               const SizedBox(height: 8),
               Text(
