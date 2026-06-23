@@ -118,107 +118,93 @@ class _CompareViewState extends ConsumerState<CompareView> {
 
     final first = asc.first;
     final last = asc.last;
+    final birthday =
+        ref.watch(appSettingsProvider).value?.projectBirthdays[widget.project.id];
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       children: [
         if (members.isNotEmpty) ...[
           _memberFilter(members),
           const SizedBox(height: 16),
         ],
-        Text('그때 vs 지금', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 12),
-        // 내보내기 대상 — RepaintBoundary로 감싸 PNG 캡처(한글 라벨·워터마크 포함).
-        RepaintBoundary(
-          key: _compareKey,
-          child: _CompareCard(
-            first: first,
-            last: last,
-            birthday: ref.watch(appSettingsProvider).value?.projectBirthdays[
-                widget.project.id],
-          ),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: _exporting ? null : _shareComparison,
-          icon: const Icon(Icons.image_outlined),
-          label: const Text('비교 이미지 공유'),
-        ),
-        const SizedBox(height: 28),
-        Text('밀어서 변화 보기', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 4),
-        Text(
-          '슬라이더를 움직이면 시간이 은은하게 흘러가요',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-        ),
-        const SizedBox(height: 12),
-        _CompareScrubber(framesAsc: asc),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => OnionSkinScreen(project: widget.project),
-            ),
-          ),
-          icon: const Icon(Icons.layers_outlined),
-          label: const Text('변화의 잔상 보기'),
-        ),
-        const SizedBox(height: 28),
-        Text('타임랩스', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 4),
-        Text(
-          '${asc.length}컷 · 시간순으로 재생됩니다',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-        ),
+        // ── 히어로: 타임랩스(가장 핵심) + 1차 액션 한 개.
+        Text('${asc.length}컷의 타임랩스',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800)),
         const SizedBox(height: 12),
         TimelapsePlayer(framesAsc: asc),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         FilledButton.icon(
           onPressed: _exporting ? null : () => _shareTimelapse(asc),
           icon: _exporting
               ? const SizedBox(
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
                 )
-              : const Icon(Icons.movie_creation_outlined),
-          label: Text(_exporting ? '만드는 중…' : '타임랩스 GIF 공유'),
+              : const Icon(Icons.ios_share),
+          label: Text(_exporting ? '만드는 중…' : '타임랩스 공유하기'),
         ),
-        const SizedBox(height: 28),
-        Text('성장 포스터', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 4),
-        Text(
-          '모든 컷을 한 장으로 묶어 인쇄·공유',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-        ),
+        const SizedBox(height: 32),
+        // ── 그때 vs 지금(공유 이미지).
+        Text('그때 vs 지금',
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => CollagePosterScreen(project: widget.project),
-            ),
-          ),
-          icon: const Icon(Icons.grid_view_rounded),
-          label: const Text('성장 포스터 만들기'),
+        RepaintBoundary(
+          key: _compareKey,
+          child: _CompareCard(first: first, last: last, birthday: birthday),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         OutlinedButton.icon(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => GrowthChartScreen(project: widget.project),
-            ),
-          ),
-          icon: const Icon(Icons.show_chart),
-          label: const Text('성장 차트 (키)'),
+          onPressed: _exporting ? null : _shareComparison,
+          icon: const Icon(Icons.image_outlined),
+          label: const Text('비교 이미지 공유'),
         ),
+        const SizedBox(height: 32),
+        // ── 더 보기(부가 도구는 깔끔한 메뉴로 정리).
+        Text('더 보기',
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 10),
+        _MenuCard(rows: [
+          _MenuRow(
+            icon: Icons.swipe_outlined,
+            title: '밀어서 변화 보기',
+            subtitle: '슬라이더로 시간을 넘겨요',
+            onTap: () => _push(ScrubberScreen(project: widget.project)),
+          ),
+          _MenuRow(
+            icon: Icons.layers_outlined,
+            title: '변화의 잔상',
+            subtitle: '여러 컷을 겹쳐서 한눈에',
+            onTap: () => _push(OnionSkinScreen(project: widget.project)),
+          ),
+          _MenuRow(
+            icon: Icons.grid_view_rounded,
+            title: '성장 포스터',
+            subtitle: '모든 컷을 한 장으로',
+            onTap: () => _push(CollagePosterScreen(project: widget.project)),
+          ),
+          _MenuRow(
+            icon: Icons.show_chart,
+            title: '성장 차트',
+            subtitle: '키 변화를 그래프로',
+            onTap: () => _push(GrowthChartScreen(project: widget.project)),
+          ),
+        ]),
       ],
     );
+  }
+
+  void _push(Widget screen) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
   }
 
   Future<void> _shareComparison() async {
@@ -551,6 +537,92 @@ class _ScrubPhoto extends StatelessWidget {
         ..rotateZ(align.rotation)
         ..scaleByDouble(align.scale, align.scale, 1, 1),
       child: image,
+    );
+  }
+}
+
+/// "밀어서 변화 보기" 단독 화면(비교 화면 메뉴에서 진입).
+class ScrubberScreen extends ConsumerWidget {
+  const ScrubberScreen({super.key, required this.project});
+  final Project project;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final capturesAsync = ref.watch(capturesProvider(project.id));
+    return Scaffold(
+      appBar: AppBar(title: const Text('밀어서 변화 보기')),
+      body: capturesAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('불러오기 오류: $e')),
+        data: (captures) {
+          if (captures.length < 2) {
+            return const Center(child: Text('사진이 2컷 이상이면 볼 수 있어요.'));
+          }
+          final asc = captures.reversed.toList(growable: false);
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [_CompareScrubber(framesAsc: asc)],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 토스풍 메뉴 카드(둥근 흰 카드 안에 행들).
+class _MenuCard extends StatelessWidget {
+  const _MenuCard({required this.rows});
+  final List<Widget> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0)
+              Divider(height: 1, indent: 56, color: scheme.outlineVariant),
+            rows[i],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ListTile(
+      onTap: onTap,
+      leading: Icon(icon, color: scheme.primary),
+      title: Text(title,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+      subtitle: Text(subtitle,
+          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+      trailing: Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
     );
   }
 }

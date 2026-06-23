@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 브랜드 테라코타 — 콜드스타트 런치 배경(흰 화면 깜빡임 방지). -->
-    <color name="brand_terracotta">#E07A5F</color>
+    <!-- 브랜드(토스풍 블루) — 콜드스타트 런치 배경(흰 화면 깜빡임 방지). -->
+    <color name="brand_terracotta">#3182F6</color>
 </resources>

@@ -76,7 +76,7 @@ class _IntroScreenState extends State<IntroScreen>
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Color(0xFFEE9B82), Color(0xFFD25E49)],
+                    colors: [Color(0xFF4593FC), Color(0xFF3182F6)],
                   ),
                 ),
                 child: Column(

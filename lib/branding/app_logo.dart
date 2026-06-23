@@ -6,8 +6,8 @@ class AppLogoMark extends StatelessWidget {
   const AppLogoMark({
     super.key,
     this.size = 120,
-    this.bodyColor = const Color(0xFFFFF4EC),
-    this.accentColor = const Color(0xFF8C3A2B),
+    this.bodyColor = const Color(0xFFFFFFFF),
+    this.accentColor = const Color(0xFF1B64DA),
   });
 
   final double size;

@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
 
-/// 앱 전역 테마.
+/// 앱 전역 테마 — **토스풍**(깔끔한 블루·화이트·넉넉한 여백·또렷한 1차 액션).
 ///
-/// 8장 원칙: iOS에서도 자연스러운 **중립적 디자인**. Material 위젯 남용을 피하고
-/// 가족 사진 앱 정서에 맞는 따뜻하고 차분한 팔레트를 사용한다.
+/// 8장 원칙(iOS에서도 자연스러운 중립적 디자인) 유지: 흰 배경 + 토스 블루 포인트,
+/// 굵은 한글 타이포, 둥근 카드/버튼, 색은 최소로.
 class AppTheme {
   AppTheme._();
 
-  /// 브랜드 시드 컬러 — 따뜻한 테라코타 톤(가족·온기).
-  static const Color _seed = Color(0xFFE07A5F);
+  // 토스 팔레트.
+  static const Color _blue = Color(0xFF3182F6); // Toss Blue
+  static const Color _ink = Color(0xFF191F28); // 본문 텍스트(거의 검정)
+  static const Color _sub = Color(0xFF8B95A1); // 보조 텍스트(회색)
+  static const Color _line = Color(0xFFE5E8EB); // 구분선/테두리
+  static const Color _fill = Color(0xFFF2F4F6); // 옅은 회색 면(카드)
 
-  /// 따뜻한 크림 배경(라이트) — 기본 M3 회색빛 surface 대신 밝고 포근하게.
-  static const Color _cream = Color(0xFFFFF8F3);
-
-  /// 브랜드 그라데이션(아이콘·인트로·CTA에 일관 사용).
+  /// 브랜드 그라데이션(아이콘·인트로·CTA) — 거의 평면에 가까운 블루.
   static const List<Color> brandGradient = [
-    Color(0xFFEE9B82),
-    Color(0xFFD25E49),
+    Color(0xFF4593FC),
+    Color(0xFF3182F6),
   ];
 
   static ThemeData light() => _build(Brightness.light);
@@ -25,11 +26,22 @@ class AppTheme {
   static ThemeData _build(Brightness brightness) {
     final isLight = brightness == Brightness.light;
     var scheme = ColorScheme.fromSeed(
-      seedColor: _seed,
+      seedColor: _blue,
       brightness: brightness,
     );
-    // 라이트에서 표면을 크림으로 끌어올려 전체 톤을 밝고 따뜻하게.
-    if (isLight) scheme = scheme.copyWith(surface: _cream);
+    if (isLight) {
+      scheme = scheme.copyWith(
+        primary: _blue,
+        onPrimary: Colors.white,
+        surface: Colors.white,
+        onSurface: _ink,
+        onSurfaceVariant: _sub,
+        outlineVariant: _line,
+        surfaceContainerHighest: _fill,
+        primaryContainer: const Color(0xFFE8F1FE), // 옅은 블루(완료/강조 면)
+        onPrimaryContainer: _blue,
+      );
+    }
     final bg = scheme.surface;
 
     return ThemeData(
@@ -37,13 +49,37 @@ class AppTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: bg,
       appBarTheme: AppBarTheme(
-        centerTitle: true,
+        centerTitle: false,
         backgroundColor: bg,
         foregroundColor: scheme.onSurface,
         elevation: 0,
-        scrolledUnderElevation: 0.5,
+        scrolledUnderElevation: 0,
+        titleTextStyle: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 19,
+          fontWeight: FontWeight.w700,
+        ),
       ),
-      // 중립적이고 가벼운 폰트 굵기 — iOS에서도 이질감 없게.
+      // 토스 스타일 1차 버튼: 블루, 둥근 14, 큼직·굵게.
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(52),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size.fromHeight(50),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+          side: BorderSide(color: isLight ? _line : scheme.outlineVariant),
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        ),
+      ),
+      dividerTheme: DividerThemeData(
+          color: isLight ? _line : scheme.outlineVariant, thickness: 1),
       visualDensity: VisualDensity.adaptivePlatformDensity,
     );
   }

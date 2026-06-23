@@ -14,11 +14,11 @@ import 'package:image/image.dart';
 
 const int size = 1024;
 
-// 브랜드 팔레트.
-final _cream = ColorRgb8(0xFF, 0xF4, 0xEC);
-final _berry = ColorRgb8(0x8C, 0x3A, 0x2B); // 렌즈 링·하트(어두운 따뜻함)
-final _gradTop = [0xEE, 0x9B, 0x82];
-final _gradBottom = [0xD2, 0x5E, 0x49];
+// 브랜드 팔레트 — 토스풍 블루.
+final _cream = ColorRgb8(0xFF, 0xFF, 0xFF); // 카메라 본체(흰색)
+final _berry = ColorRgb8(0x1B, 0x64, 0xDA); // 렌즈 링·하트(진한 블루)
+final _gradTop = [0x45, 0x93, 0xFC];
+final _gradBottom = [0x31, 0x82, 0xF6];
 
 void main() {
   final dir = Directory('assets/icon');
