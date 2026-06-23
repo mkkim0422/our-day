@@ -20,6 +20,20 @@ class CaptureRepository {
     return q.watch();
   }
 
+  /// 단건 조회(알림 페이로드 → 기준 사진 로드 등).
+  Future<Capture?> getById(String id) {
+    return (_db.select(_db.captures)..where((c) => c.id.equals(id)))
+        .getSingleOrNull();
+  }
+
+  /// 프로젝트의 촬영 목록(최신순) 1회 조회 — 알림 재예약 등 비-스트림 용도.
+  Future<List<Capture>> listByProject(String projectId) {
+    final q = _db.select(_db.captures)
+      ..where((c) => c.projectId.equals(projectId))
+      ..orderBy([(c) => OrderingTerm.desc(c.capturedAt)]);
+    return q.get();
+  }
+
   /// 가장 최근 촬영(오버레이 기본값·킬러 기능 4장).
   Future<Capture?> latestForProject(String projectId) {
     final q = _db.select(_db.captures)

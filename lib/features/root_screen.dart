@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/repositories/providers.dart';
+import '../services/notifications/notification_service.dart';
+import '../services/providers.dart';
+import 'capture/capture_screen.dart';
 import 'home/home_providers.dart';
 import 'home/home_screen.dart';
 import 'onboarding/new_project_screen.dart';
@@ -14,6 +18,13 @@ class RootScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 알림 탭(②-1 입력경로 4) → 해당 프로젝트의 촬영 화면으로 진입.
+    ref.listen<NotificationPayload?>(pendingNotificationProvider, (_, next) {
+      if (next == null) return;
+      ref.read(pendingNotificationProvider.notifier).clear();
+      _openFromNotification(context, ref, next);
+    });
+
     final projectsAsync = ref.watch(projectsProvider);
 
     return projectsAsync.when(
@@ -28,6 +39,34 @@ class RootScreen extends ConsumerWidget {
         // MVP는 단일 사용자 — 가장 최근 프로젝트를 홈으로(전환 UI는 v1.5).
         return HomeScreen(project: projects.first);
       },
+    );
+  }
+
+  /// 알림 페이로드로 촬영 화면 진입. captureId가 있으면(회상 알림) 그 사진을
+  /// 오버레이 기준으로, 없으면 가장 최근 사진을 기준으로 띄운다(4·5장).
+  Future<void> _openFromNotification(
+    BuildContext context,
+    WidgetRef ref,
+    NotificationPayload payload,
+  ) async {
+    final project =
+        await ref.read(projectRepositoryProvider).getById(payload.projectId);
+    if (project == null || !context.mounted) return;
+
+    final captureRepo = ref.read(captureRepositoryProvider);
+    final reference = payload.captureId != null
+        ? await captureRepo.getById(payload.captureId!)
+        : await captureRepo.latestForProject(project.id);
+    if (!context.mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CaptureScreen(
+          project: project,
+          referenceCapture: reference,
+          placeId: reference?.placeId,
+        ),
+      ),
     );
   }
 }

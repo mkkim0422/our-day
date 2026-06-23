@@ -103,6 +103,12 @@ class _AlignmentAdjusterScreenState
         placeId: widget.placeId,
       );
 
+      // 저장 후 알림 재예약: 다음 기간 리마인더 갱신 + 이 사진의 기념일(회상) 추가.
+      final all = await captures.listByProject(widget.project.id);
+      await ref
+          .read(notificationServiceProvider)
+          .scheduleForProject(widget.project, all);
+
       if (mounted) Navigator.of(context).pop(capture);
     } finally {
       if (mounted) setState(() => _saving = false);

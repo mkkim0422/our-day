@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/enums.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repositories/providers.dart';
+import '../../services/providers.dart';
 
 /// ① 첫 프로젝트 생성 화면.
 ///
@@ -41,6 +42,15 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
             scheduleConfig: _defaultConfig(_scheduleType),
             eventPeg: _eventPeg,
           );
+
+      // 알림 권한은 실제 필요한 시점(첫 프로젝트 생성)에 단계적으로 요청(3·9장).
+      // manual 주기는 예약할 게 없으므로 권한도 강요하지 않는다.
+      final notifications = ref.read(notificationServiceProvider);
+      if (_scheduleType != ScheduleType.manual) {
+        await notifications.requestPermission();
+      }
+      await notifications.scheduleForProject(project, const []);
+
       if (mounted) Navigator.of(context).pop<Project>(project);
     } finally {
       if (mounted) setState(() => _saving = false);
