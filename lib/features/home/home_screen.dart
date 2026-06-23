@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ads/ad_slot.dart';
 import '../../data/db/app_database.dart';
+import '../capture/backfill_screen.dart';
+import '../capture/capture_detail_screen.dart';
 import '../capture/capture_screen.dart';
 import '../compare/compare_screen.dart';
 import 'home_providers.dart';
@@ -34,6 +36,11 @@ class HomeScreen extends ConsumerWidget {
               tooltip: '비교 · 타임랩스',
               onPressed: () => _openCompare(context),
             ),
+          IconButton(
+            icon: const Icon(Icons.library_add_outlined),
+            tooltip: '예전 사진 채우기',
+            onPressed: () => _openBackfill(context),
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: '설정',
@@ -70,11 +77,14 @@ class HomeScreen extends ConsumerWidget {
         Text('지난 기록', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 12),
         if (captures.isEmpty)
-          _EmptyTimeline(onTap: () => _openCapture(context, ref, null))
+          _EmptyTimeline(
+            onTap: () => _openCapture(context, ref, null),
+            onBackfill: () => _openBackfill(context),
+          )
         else
           _TimelineGrid(
             captures: captures,
-            onTapCell: (_) => _openCompare(context),
+            onTapCell: (capture) => _openDetail(context, capture),
           ),
       ],
     );
@@ -83,6 +93,22 @@ class HomeScreen extends ConsumerWidget {
   Future<void> _openCompare(BuildContext context) async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => CompareScreen(project: project)),
+    );
+  }
+
+  /// 썸네일 탭 → 풀사이즈 사진 상세(명세 ②).
+  Future<void> _openDetail(BuildContext context, Capture capture) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CaptureDetailScreen(project: project, capture: capture),
+      ),
+    );
+  }
+
+  /// 과거 일괄 채우기(②-1 입력경로 3) 진입.
+  Future<void> _openBackfill(BuildContext context) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => BackfillScreen(project: project)),
     );
   }
 
@@ -238,8 +264,9 @@ class _TimelineCell extends StatelessWidget {
 }
 
 class _EmptyTimeline extends StatelessWidget {
-  const _EmptyTimeline({required this.onTap});
+  const _EmptyTimeline({required this.onTap, required this.onBackfill});
   final VoidCallback onTap;
+  final VoidCallback onBackfill;
 
   @override
   Widget build(BuildContext context) {
@@ -269,6 +296,12 @@ class _EmptyTimeline extends StatelessWidget {
             onPressed: onTap,
             icon: const Icon(Icons.camera_alt),
             label: const Text('첫 사진 찍기'),
+          ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: onBackfill,
+            icon: const Icon(Icons.library_add_outlined),
+            label: const Text('예전 사진으로 한번에 채우기'),
           ),
         ],
       ),
