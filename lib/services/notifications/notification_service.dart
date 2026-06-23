@@ -11,12 +11,20 @@ import '../../data/db/app_database.dart';
 
 /// 알림 탭 시 전달되는 페이로드(어느 프로젝트의 어느 사진으로 진입할지).
 class NotificationPayload {
-  const NotificationPayload({required this.projectId, this.captureId});
+  const NotificationPayload({
+    required this.projectId,
+    this.captureId,
+    this.recap = false,
+  });
 
   final String projectId;
   final String? captureId;
 
-  String encode() => jsonEncode({'p': projectId, 'c': captureId});
+  /// 연말 리캡 알림이면 true → 비교·타임랩스 화면으로 진입(아이디어6).
+  final bool recap;
+
+  String encode() =>
+      jsonEncode({'p': projectId, 'c': captureId, 'r': recap});
 
   static NotificationPayload? decode(String? raw) {
     if (raw == null || raw.isEmpty) return null;
@@ -24,7 +32,11 @@ class NotificationPayload {
       final map = jsonDecode(raw) as Map<String, dynamic>;
       final pid = map['p'] as String?;
       if (pid == null) return null;
-      return NotificationPayload(projectId: pid, captureId: map['c'] as String?);
+      return NotificationPayload(
+        projectId: pid,
+        captureId: map['c'] as String?,
+        recap: map['r'] as bool? ?? false,
+      );
     } catch (_) {
       return null;
     }
@@ -153,6 +165,22 @@ class NotificationService {
             NotificationPayload(projectId: project.id, captureId: a.capture.id),
       );
     }
+
+    // ③ 연말 자동 리캡(아이디어6, 6장 7번): 12/31 저녁, 올해 기록이 2컷↑이면
+    //    "올해의 우리" 타임랩스를 보러 오게 하는 알림.
+    final thisYearCount =
+        captures.where((c) => c.capturedAt.year == from.year).length;
+    if (thisYearCount >= 2) {
+      var recap = DateTime(from.year, 12, 31, 19);
+      if (recap.isBefore(from)) recap = DateTime(from.year + 1, 12, 31, 19);
+      await _zonedSchedule(
+        id: _recapId(project.id),
+        title: '올해의 우리 🎞️',
+        body: '«${project.title}» 올해 기록이 모였어요. 한 해의 변화를 타임랩스로 돌아볼까요?',
+        when: recap,
+        payload: NotificationPayload(projectId: project.id, recap: true),
+      );
+    }
   }
 
   /// 위치 기반 회상 알림을 **즉시** 표시 (5장).
@@ -190,6 +218,7 @@ class NotificationService {
   Future<void> cancelForProject(String projectId) async {
     if (!_ready) return;
     await _plugin.cancel(id: _periodId(projectId));
+    await _plugin.cancel(id: _recapId(projectId));
     for (var i = 0; i < _maxNostalgia; i++) {
       await _plugin.cancel(id: _nostalgiaId(projectId, i));
     }
@@ -245,4 +274,7 @@ class NotificationService {
   // 장소 회상 알림 ID — 예약 알림 ID 영역과 겹치지 않게 별도 범위.
   int _placeRecallId(String placeId) =>
       20000000 + (placeId.hashCode & 0x7fffffff) % 1000000;
+  // 연말 리캡 ID — 또 다른 별도 범위.
+  int _recapId(String projectId) =>
+      30000000 + (projectId.hashCode & 0x7fffffff) % 1000000;
 }

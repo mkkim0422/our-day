@@ -8,6 +8,7 @@ import '../services/location/place_recall.dart';
 import '../services/notifications/notification_service.dart';
 import '../services/providers.dart';
 import 'capture/capture_screen.dart';
+import 'compare/compare_screen.dart';
 import 'home/home_providers.dart';
 import 'home/main_shell.dart';
 import 'onboarding/new_project_screen.dart';
@@ -139,6 +140,14 @@ class _RootScreenState extends ConsumerState<RootScreen>
     final project =
         await ref.read(projectRepositoryProvider).getById(payload.projectId);
     if (project == null || !context.mounted) return;
+
+    // 연말 리캡 알림 → 비교·타임랩스 화면(아이디어6).
+    if (payload.recap) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => CompareScreen(project: project)),
+      );
+      return;
+    }
 
     final captureRepo = ref.read(captureRepositoryProvider);
     final reference = payload.captureId != null
