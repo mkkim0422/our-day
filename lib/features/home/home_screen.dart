@@ -9,6 +9,7 @@ import '../capture/backfill_screen.dart';
 import '../capture/capture_detail_screen.dart';
 import '../capture/capture_screen.dart';
 import '../compare/compare_screen.dart';
+import '../settings/settings_screen.dart';
 import 'home_providers.dart';
 import 'widgets/progress_gauge.dart';
 
@@ -44,7 +45,9 @@ class HomeScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: '설정',
-            onPressed: () => _comingSoon(context, '설정 / 백업'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
           ),
         ],
       ),
@@ -126,12 +129,6 @@ class HomeScreen extends ConsumerWidget {
       ),
     );
     // 저장은 스트림(capturesProvider)으로 자동 반영되므로 별도 갱신 불필요.
-  }
-
-  void _comingSoon(BuildContext context, String label) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$label — 곧 제공됩니다.')),
-    );
   }
 }
 

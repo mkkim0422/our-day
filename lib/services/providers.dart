@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/repositories/providers.dart';
+import 'backup/local_backup_service.dart';
 import 'camera/photo_storage.dart';
 import 'notifications/notification_service.dart';
 import 'share/share_service.dart';
@@ -19,6 +21,11 @@ final timelapseServiceProvider =
 /// 공유 / 내보내기 서비스 (⑥장).
 final shareServiceProvider =
     Provider<ShareService>((ref) => const ShareService());
+
+/// 로컬 백업(zip) 서비스 (③·8장). DB 인스턴스를 주입받는다.
+final localBackupServiceProvider = Provider<LocalBackupService>(
+  (ref) => LocalBackupService(ref.watch(databaseProvider)),
+);
 
 /// 로컬 알림 서비스(단일 인스턴스). main에서 init() 후 화면들이 공유.
 final notificationServiceProvider =

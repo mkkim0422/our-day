@@ -26,8 +26,9 @@
 |---|---|---|---|
 | **타임랩스(이미지→영상)** | ~~`ffmpeg_kit_flutter`~~ → **순수 Dart `image`(GIF)** | ✅ **작업 #6 결정**: 원본 ffmpeg-kit는 2025-01-06 공식 폐기(바이너리 2025-04 내림). 커뮤니티 포크 `ffmpeg_kit_flutter_new`는 **GPL**이라 상용 배포에 부담, 네이티브 인코더는 플랫폼별 구현 비용 큼 → **MVP는 추가 의존성 없이 `image` 패키지로 애니메이션 GIF 생성**(네이티브 코드 0, 양 플랫폼 동일, 단톡방·SNS 호환). 한계는 256색·용량. 고화질 mp4가 필요해지면 `TimelapseService`의 프레임 합성 파이프라인 뒤에 네이티브 인코더(MediaCodec/AVAssetWriter)를 끼워 교체(별도 작업). | 작업 #6 ✅ |
 | **지오펜싱(백그라운드 위치)** | **`native_geofence`** | 네이티브 CLLocationManager/GeofencingClient 래핑, 배터리 효율적, iOS14+/Android23+. 인수인계서 배터리·한도 우려에 부합. Kotlin **1.9.25+** 필요. opt-in 강제. | 작업 #8 |
-| 소셜 로그인 | `google_sign_in`, `sign_in_with_apple` | 표준. 백업 스코프(드라이브)와 함께 추가. | 작업 #7 |
-| 클라우드 백업 | `googleapis`(Drive) + iCloud(파일기반) | 백업 서비스 인터페이스 뒤로 격리(8장). | 작업 #7 |
+| **로컬 백업(zip)** | **`archive`** | ✅ **작업 #8 채택**: manifest(DB JSON)+사진을 단일 zip으로 묶어 사용자가 본인 클라우드로 직접 공유/복원. 순수 Dart, 네이티브 0. `DatabaseBackup`(직렬화)는 Drive/iCloud 구현이 그대로 재사용. | 작업 #8 ✅ |
+| 소셜 로그인 | `google_sign_in`, `sign_in_with_apple` | 표준. 백업 스코프(드라이브)와 함께 추가. 설정 화면 로그인 버튼은 스텁(스냅바) 상태. | 작업 #future |
+| 클라우드 백업(자동) | `googleapis`(Drive) + iCloud(파일기반) | 백업 서비스 인터페이스 뒤로 격리(8장). `BackupService` 인터페이스 + `DatabaseBackup` 재사용. 파일 선택 복원(`file_picker`)도 이때 추가. | 작업 #future |
 | 광고 | `google_mobile_ads` (+UMP 동의) | 아동·가족 정책 필터 필수(6-1장). 슬롯 컴포넌트로 격리. | 작업 #9 |
 | 인앱결제/구독 | `in_app_purchase` | 광고제거 프리미엄. 실물상품(v2 인쇄)은 외부 PG. | 작업 #9 / v2 |
 
