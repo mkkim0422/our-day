@@ -99,6 +99,13 @@ class CaptureRepository {
         .write(CapturesCompanion(alignmentMeta: Value(meta)));
   }
 
+  /// 한 줄 메모 저장(아이디어3 — 그날의 한마디). 빈 문자열이면 null로 비움.
+  Future<void> updateNote(String id, String? note) {
+    final value = (note == null || note.trim().isEmpty) ? null : note.trim();
+    return (_db.update(_db.captures)..where((c) => c.id.equals(id)))
+        .write(CapturesCompanion(note: Value(value)));
+  }
+
   Future<void> setBackupState(String id, BackupState state) {
     return (_db.update(_db.captures)..where((c) => c.id.equals(id)))
         .write(CapturesCompanion(backupState: Value(state)));

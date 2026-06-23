@@ -10,9 +10,8 @@ import '../compare/compare_screen.dart';
 
 /// 사진 상세 — 썸네일 탭 시 **풀사이즈**로 보여준다(명세 ② "썸네일 탭 → 상세").
 ///
-/// 핀치 줌(원본 고해상도 확인), 공유(⑥), 삭제, 비교·타임랩스(⑤) 진입을 제공.
-/// 원본은 인쇄 품질로 보존돼 있으므로(7-1장) 여기서 원본 경로를 그대로 띄운다.
-class CaptureDetailScreen extends ConsumerWidget {
+/// 핀치 줌, 한 줄 메모(아이디어3), 공유(⑥), 삭제, 비교·타임랩스(⑤) 진입.
+class CaptureDetailScreen extends ConsumerStatefulWidget {
   const CaptureDetailScreen({
     super.key,
     required this.project,
@@ -23,25 +22,33 @@ class CaptureDetailScreen extends ConsumerWidget {
   final Capture capture;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final file = File(capture.filePath);
+  ConsumerState<CaptureDetailScreen> createState() =>
+      _CaptureDetailScreenState();
+}
+
+class _CaptureDetailScreenState extends ConsumerState<CaptureDetailScreen> {
+  late String? _note = widget.capture.note;
+
+  @override
+  Widget build(BuildContext context) {
+    final file = File(widget.capture.filePath);
 
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: Text(capture.periodLabel),
+        title: Text(widget.capture.periodLabel),
         actions: [
           IconButton(
             icon: const Icon(Icons.ios_share),
             tooltip: '공유',
-            onPressed: () => _share(ref),
+            onPressed: _share,
           ),
           PopupMenuButton<String>(
             color: Colors.grey[900],
             onSelected: (v) {
-              if (v == 'delete') _confirmDelete(context, ref);
+              if (v == 'delete') _confirmDelete();
             },
             itemBuilder: (_) => const [
               PopupMenuItem(
@@ -54,7 +61,6 @@ class CaptureDetailScreen extends ConsumerWidget {
       ),
       body: Column(
         children: [
-          // 풀사이즈 + 핀치 줌. 원본 파일이 없으면 안내(깨짐 방지).
           Expanded(
             child: file.existsSync()
                 ? InteractiveViewer(
@@ -81,7 +87,7 @@ class CaptureDetailScreen extends ConsumerWidget {
   }
 
   Widget _infoBar(BuildContext context) {
-    final note = capture.note;
+    final hasNote = _note != null && _note!.isNotEmpty;
     return Container(
       width: double.infinity,
       color: Colors.black,
@@ -90,14 +96,35 @@ class CaptureDetailScreen extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            _formatDate(capture.capturedAt),
+            _formatDate(widget.capture.capturedAt),
             style: const TextStyle(color: Colors.white70, fontSize: 13),
           ),
-          if (note != null && note.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(note, style: const TextStyle(color: Colors.white)),
-          ],
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
+          // 한 줄 메모(아이디어3) — 탭하면 추가/수정.
+          InkWell(
+            onTap: _editNote,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Icon(hasNote ? Icons.edit_note : Icons.add_comment_outlined,
+                      color: Colors.white54, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      hasNote ? _note! : '그날의 한마디를 남겨보세요',
+                      style: TextStyle(
+                        color: hasNote ? Colors.white : Colors.white38,
+                        fontStyle: hasNote ? FontStyle.normal : FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.white,
@@ -108,7 +135,7 @@ class CaptureDetailScreen extends ConsumerWidget {
             label: const Text('비교 · 타임랩스 보기'),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => CompareScreen(project: project),
+                builder: (_) => CompareScreen(project: widget.project),
               ),
             ),
           ),
@@ -117,14 +144,47 @@ class CaptureDetailScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _share(WidgetRef ref) async {
+  Future<void> _editNote() async {
+    final controller = TextEditingController(text: _note ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('그날의 한마디'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 80,
+          decoration: const InputDecoration(hintText: '예: 첫 걸음마 뗀 날'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text),
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return; // 취소.
+    await ref
+        .read(captureRepositoryProvider)
+        .updateNote(widget.capture.id, result);
+    if (mounted) {
+      setState(() => _note = result.trim().isEmpty ? null : result.trim());
+    }
+  }
+
+  Future<void> _share() async {
     await ref.read(shareServiceProvider).shareFiles(
-      [capture.filePath],
-      text: '그날 우리 · ${capture.periodLabel}',
+      [widget.capture.filePath],
+      text: '그날 우리 · ${widget.capture.periodLabel}',
     );
   }
 
-  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
+  Future<void> _confirmDelete() async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -142,23 +202,21 @@ class CaptureDetailScreen extends ConsumerWidget {
         ],
       ),
     );
-    if (ok != true || !context.mounted) return;
+    if (ok != true || !mounted) return;
 
     final captureRepo = ref.read(captureRepositoryProvider);
     await ref
         .read(photoStorageProvider)
-        .deleteFiles(capture.filePath, capture.thumbPath);
-    await captureRepo.delete(capture.id);
+        .deleteFiles(widget.capture.filePath, widget.capture.thumbPath);
+    await captureRepo.delete(widget.capture.id);
 
-    // 삭제로 회상 알림 대상이 바뀌므로 재예약(작업 #5 패턴과 동일).
-    final remaining = await captureRepo.listByProject(project.id);
+    final remaining = await captureRepo.listByProject(widget.project.id);
     await ref
         .read(notificationServiceProvider)
-        .scheduleForProject(project, remaining);
+        .scheduleForProject(widget.project, remaining);
 
-    if (context.mounted) Navigator.of(context).pop();
+    if (mounted) Navigator.of(context).pop();
   }
 
-  String _formatDate(DateTime d) =>
-      '${d.year}년 ${d.month}월 ${d.day}일';
+  String _formatDate(DateTime d) => '${d.year}년 ${d.month}월 ${d.day}일';
 }

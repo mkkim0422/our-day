@@ -8,6 +8,7 @@ import '../../services/providers.dart';
 import '../../services/timelapse/timelapse_service.dart';
 import '../capture/alignment_meta.dart';
 import '../home/home_providers.dart';
+import 'collage_poster_screen.dart';
 import 'widgets/timelapse_player.dart';
 
 /// ⑤ 비교 / 타임랩스 — "가치 실현 순간"(변화 체감).
@@ -85,6 +86,17 @@ class _CompareViewState extends ConsumerState<CompareView> {
           label: const Text('비교 이미지 공유'),
         ),
         const SizedBox(height: 28),
+        Text('밀어서 변화 보기', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text(
+          '슬라이더를 움직이면 시간이 은은하게 흘러가요',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+        const SizedBox(height: 12),
+        _CompareScrubber(framesAsc: asc),
+        const SizedBox(height: 28),
         Text('타임랩스', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
         Text(
@@ -106,6 +118,25 @@ class _CompareViewState extends ConsumerState<CompareView> {
                 )
               : const Icon(Icons.movie_creation_outlined),
           label: Text(_exporting ? '만드는 중…' : '타임랩스 GIF 공유'),
+        ),
+        const SizedBox(height: 28),
+        Text('성장 포스터', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text(
+          '모든 컷을 한 장으로 묶어 인쇄·공유',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => CollagePosterScreen(project: widget.project),
+            ),
+          ),
+          icon: const Icon(Icons.grid_view_rounded),
+          label: const Text('성장 포스터 만들기'),
         ),
       ],
     );
@@ -290,6 +321,109 @@ class _NeedMore extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 아이디어2 — 인터랙티브 비교 스크러버. 슬라이더를 끌면 두 시점이 겹치며
+/// 은은하게 모핑(같은 구도라면 변화가 한 화면에서 드러난다).
+class _CompareScrubber extends StatefulWidget {
+  const _CompareScrubber({required this.framesAsc});
+  final List<Capture> framesAsc;
+
+  @override
+  State<_CompareScrubber> createState() => _CompareScrubberState();
+}
+
+class _CompareScrubberState extends State<_CompareScrubber> {
+  late double _t = (widget.framesAsc.length - 1).toDouble();
+
+  @override
+  Widget build(BuildContext context) {
+    final frames = widget.framesAsc;
+    final maxIndex = frames.length - 1;
+    final lower = _t.floor().clamp(0, maxIndex);
+    final upper = _t.ceil().clamp(0, maxIndex);
+    final frac = _t - lower;
+    final shown = frac < 0.5 ? lower : upper;
+
+    return Column(
+      children: [
+        AspectRatio(
+          aspectRatio: 3 / 4,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final size = Size(c.maxWidth, c.maxHeight);
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Container(color: Colors.black),
+                    Opacity(
+                      opacity: 1 - frac,
+                      child: _ScrubPhoto(capture: frames[lower], viewSize: size),
+                    ),
+                    Opacity(
+                      opacity: frac,
+                      child: _ScrubPhoto(capture: frames[upper], viewSize: size),
+                    ),
+                    Positioned(
+                      left: 12,
+                      bottom: 12,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          frames[shown].periodLabel,
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+        Slider(
+          value: _t.clamp(0, maxIndex.toDouble()),
+          min: 0,
+          max: maxIndex.toDouble(),
+          onChanged: (v) => setState(() => _t = v),
+        ),
+      ],
+    );
+  }
+}
+
+class _ScrubPhoto extends StatelessWidget {
+  const _ScrubPhoto({required this.capture, required this.viewSize});
+  final Capture capture;
+  final Size viewSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final file = File(capture.filePath);
+    if (!file.existsSync()) return const ColoredBox(color: Colors.black12);
+    final align = capture.alignmentMeta != null
+        ? AlignmentMeta.fromMap(capture.alignmentMeta!)
+        : AlignmentMeta.identity;
+    final image = Image.file(file, fit: BoxFit.cover, gaplessPlayback: true);
+    if (align.isIdentity) return image;
+    return Transform(
+      alignment: Alignment.center,
+      transform: Matrix4.identity()
+        ..translateByDouble(
+            align.dx * viewSize.width, align.dy * viewSize.height, 0, 1)
+        ..rotateZ(align.rotation)
+        ..scaleByDouble(align.scale, align.scale, 1, 1),
+      child: image,
     );
   }
 }
