@@ -87,30 +87,53 @@ class _BackfillScreenState extends ConsumerState<BackfillScreen> {
   Future<void> _saveAll() async {
     if (_items.isEmpty || _saving) return;
     setState(() => _saving = true);
-    try {
-      final storage = ref.read(photoStorageProvider);
-      final captures = ref.read(captureRepositoryProvider);
 
+    final storage = ref.read(photoStorageProvider);
+    final captures = ref.read(captureRepositoryProvider);
+    var added = 0;
+    var failed = 0;
+
+    try {
       for (final item in _items) {
-        final stored = await storage.saveFromFile(item.path);
-        await captures.create(
-          project: widget.project,
-          filePath: stored.originalPath,
-          thumbPath: stored.thumbPath,
-          capturedAt: item.date,
-        );
+        // 한 장이 실패해도(예: 클라우드 전용 갤러리 URI) 나머지는 계속 진행.
+        try {
+          final stored = await storage.saveFromFile(item.path);
+          await captures.create(
+            project: widget.project,
+            filePath: stored.originalPath,
+            thumbPath: stored.thumbPath,
+            capturedAt: item.date,
+          );
+          added++;
+        } catch (_) {
+          failed++;
+        }
       }
 
       // 사진이 쌓이면 회상 알림 대상이 늘어나므로 한 번 재예약(작업 #5 패턴).
-      final all = await captures.listByProject(widget.project.id);
-      await ref
-          .read(notificationServiceProvider)
-          .scheduleForProject(widget.project, all);
-
-      if (mounted) Navigator.of(context).pop(_items.length);
+      if (added > 0) {
+        final all = await captures.listByProject(widget.project.id);
+        await ref
+            .read(notificationServiceProvider)
+            .scheduleForProject(widget.project, all);
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+
+    if (!mounted) return;
+    if (added == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('사진을 추가하지 못했어요. 다른 사진으로 다시 시도해 주세요.')),
+      );
+      return;
+    }
+    if (failed > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$added장 추가 완료 ($failed장은 실패해 건너뜀)')),
+      );
+    }
+    Navigator.of(context).pop(added);
   }
 
   @override

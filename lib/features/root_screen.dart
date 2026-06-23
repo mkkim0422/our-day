@@ -28,7 +28,19 @@ class _RootScreenState extends ConsumerState<RootScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkPlaceRecall());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 콜드스타트 알림 탭은 RootScreen 구독 전에 set되어 build의 listen이 놓치므로,
+      // 마운트 직후 현재 페이로드를 직접 한 번 소비한다.
+      _consumePendingNotification();
+      _checkPlaceRecall();
+    });
+  }
+
+  Future<void> _consumePendingNotification() async {
+    final payload = ref.read(pendingNotificationProvider);
+    if (payload == null) return;
+    ref.read(pendingNotificationProvider.notifier).clear();
+    await _openFromNotification(context, payload);
   }
 
   @override
@@ -47,39 +59,47 @@ class _RootScreenState extends ConsumerState<RootScreen>
   /// opt-in이면 현재 위치를 읽어 반경 내 추억 장소가 있으면 회상 알림을 띄운다.
   /// 빈도 제한(쿨다운)은 [PlaceRecall]과 저장된 마지막 알림 시각으로 처리.
   Future<void> _checkPlaceRecall() async {
-    final settings = ref.read(appSettingsProvider).value;
-    if (settings == null || !settings.locationRecallEnabled) return;
+    try {
+      // 첫 프레임엔 설정/프로젝트가 아직 loading일 수 있으므로 값을 await(콜드스타트
+      // "막 그 장소에 도착해 앱을 연" 케이스에서도 동작하도록).
+      final settings = await ref.read(appSettingsProvider.future);
+      if (!settings.locationRecallEnabled) return;
 
-    final projects = ref.read(projectsProvider).value;
-    if (projects == null || projects.isEmpty) return;
-    final project = projects.first;
+      final projects = await ref.read(projectsProvider.future);
+      if (projects.isEmpty) return;
+      final project = projects.first;
 
-    final point = await ref.read(locationServiceProvider).current();
-    if (point == null) return;
+      final point = await ref.read(locationServiceProvider).current();
+      if (point == null) return;
 
-    final places =
-        await ref.read(placeRepositoryProvider).watchByProject(project.id).first;
-    final now = DateTime.now();
-    final match = PlaceRecall.match(
-      here: point,
-      places: places,
-      lastNotified: settings.placeLastNotified,
-      now: now,
-    );
-    if (match == null) return;
+      final places = await ref
+          .read(placeRepositoryProvider)
+          .watchByProject(project.id)
+          .first;
+      final now = DateTime.now();
+      final match = PlaceRecall.match(
+        here: point,
+        places: places,
+        lastNotified: settings.placeLastNotified,
+        now: now,
+      );
+      if (match == null) return;
 
-    final latest =
-        await ref.read(captureRepositoryProvider).latestForPlace(match.id);
-    if (latest == null) return;
+      final latest =
+          await ref.read(captureRepositoryProvider).latestForPlace(match.id);
+      if (latest == null) return;
 
-    await ref.read(notificationServiceProvider).showPlaceRecall(
-          place: match,
-          latest: latest,
-          projectId: project.id,
-        );
-    await ref
-        .read(appSettingsProvider.notifier)
-        .recordPlaceNotified(match.id, now);
+      await ref.read(notificationServiceProvider).showPlaceRecall(
+            place: match,
+            latest: latest,
+            projectId: project.id,
+          );
+      await ref
+          .read(appSettingsProvider.notifier)
+          .recordPlaceNotified(match.id, now);
+    } catch (_) {
+      // 위치 회상은 best-effort — 권한/위치/플러그인 실패 시 조용히 건너뜀.
+    }
   }
 
   @override

@@ -133,6 +133,8 @@ class _AlignmentAdjusterScreenState
         widget.project.id, point.latitude, point.longitude);
     if (existing != null) {
       await placeRepo.incrementCaptureCount(existing.id);
+      // 촬영 횟수가 바뀌었으니 지오펜스 우선순위(상위 N개만 켜기) 재정렬.
+      await placeRepo.enforceGeofenceLimit(widget.project.id);
       return existing.id;
     }
     final created = await placeRepo.create(
@@ -142,8 +144,9 @@ class _AlignmentAdjusterScreenState
           '${point.longitude.toStringAsFixed(3)})',
       latitude: point.latitude,
       longitude: point.longitude,
-      geofenceEnabled: true, // opt-in 상태이므로 회상 대상으로 등록.
     );
+    // 새 장소 포함해 capture_count 상위 N개만 지오펜스 활성(플랫폼 한도 대응, 5장).
+    await placeRepo.enforceGeofenceLimit(widget.project.id);
     return created.id;
   }
 

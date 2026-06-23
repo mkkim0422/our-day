@@ -66,6 +66,20 @@ dev_dependencies:
   build_runner: ^2.15.0
   # 타임랩스 테스트에서 문서 디렉터리를 임시 폴더로 주입(fake)하는 데 사용.
   path_provider_platform_interface: ^2.1.0
+  # 앱 아이콘 생성(빌드 타임 도구). (네이티브 스플래시는 image 패키지와 xml 버전이
+  # 충돌해 자동 도구 대신 런치 배경을 수동 설정 + 인앱 애니메이션 인트로로 처리.)
+  flutter_launcher_icons: ^0.14.4
+
+# 앱 아이콘 생성 설정 — 소스 PNG는 tool/generate_icon.dart로 생성.
+# 재생성: `dart run tool/generate_icon.dart` → `dart run flutter_launcher_icons`
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  min_sdk_android: 26
+  adaptive_icon_background: "assets/icon/app_icon_background.png"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

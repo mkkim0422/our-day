@@ -27,14 +27,16 @@ class PlaceRepository {
     return q.get();
   }
 
-  /// 좌표 근처(반경 내)에 이미 등록된 장소를 찾는다. 없으면 null.
+  /// 좌표 근처에 이미 등록된 장소를 찾는다. 없으면 null.
   /// 같은 장소 재촬영 시 새 Place를 만들지 않고 기존 것을 재사용하기 위함.
+  ///
+  /// 판정 반경은 **각 장소의 `radiusM`** 을 사용한다 — 회상 알림 매칭(PlaceRecall)과
+  /// 같은 기준이라, "한 장소"로 묶이는 범위가 dedup과 알림에서 일치한다.
   Future<Place?> findNear(
     String projectId,
     double lat,
-    double lng, {
-    double toleranceM = 150,
-  }) async {
+    double lng,
+  ) async {
     final places = await (_db.select(_db.places)
           ..where((p) => p.projectId.equals(projectId)))
         .get();
@@ -42,7 +44,7 @@ class PlaceRepository {
     double bestDist = double.infinity;
     for (final p in places) {
       final d = GeoDistance.haversineMeters(lat, lng, p.latitude, p.longitude);
-      if (d <= toleranceM && d < bestDist) {
+      if (d <= p.radiusM && d < bestDist) {
         best = p;
         bestDist = d;
       }
@@ -86,5 +88,25 @@ class PlaceRepository {
   Future<void> setGeofenceEnabled(String id, bool enabled) {
     return (_db.update(_db.places)..where((p) => p.id.equals(id)))
         .write(PlacesCompanion(geofenceEnabled: Value(enabled)));
+  }
+
+  /// 플랫폼 지오펜스 한도(특히 iOS ~20) 대응 (5장): `capture_count` 높은 순
+  /// 상위 [maxEnabled]개만 geofence를 켜고 나머지는 끈다.
+  static const int maxGeofences = 20;
+
+  Future<void> enforceGeofenceLimit(
+    String projectId, {
+    int maxEnabled = maxGeofences,
+  }) async {
+    final all = await (_db.select(_db.places)
+          ..where((p) => p.projectId.equals(projectId))
+          ..orderBy([(p) => OrderingTerm.desc(p.captureCount)]))
+        .get();
+    for (var i = 0; i < all.length; i++) {
+      final shouldEnable = i < maxEnabled;
+      if (all[i].geofenceEnabled != shouldEnable) {
+        await setGeofenceEnabled(all[i].id, shouldEnable);
+      }
+    }
   }
 }

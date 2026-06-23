@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repositories/providers.dart';
 import '../../services/backup/local_backup_service.dart';
+import '../../services/location/location_service.dart';
 import '../../services/providers.dart';
 import 'settings_providers.dart';
 
@@ -225,14 +226,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _toggleLocationRecall(bool enabled) async {
     // 켤 때만 위치 권한을 요청(5장 — opt-in, 강요하지 않음).
     if (enabled) {
-      final granted = await ref.read(locationServiceProvider).ensurePermission();
-      if (!granted) {
-        _snack('위치 권한이 필요해요. 기기 설정에서 위치 접근을 허용해 주세요.');
+      final location = ref.read(locationServiceProvider);
+      final auth = await location.requestPermission();
+      if (auth != LocationAuth.granted) {
+        if (!mounted) return;
+        if (auth == LocationAuth.deniedForever) {
+          // 영구 거부 — 앱 설정에서만 회복 가능. 바로 열어줄 수 있게 안내.
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('위치 권한이 꺼져 있어요. 설정에서 허용해 주세요.'),
+              action: SnackBarAction(
+                  label: '설정 열기', onPressed: location.openSettings),
+            ),
+          );
+        } else if (auth == LocationAuth.serviceOff) {
+          _snack('기기의 위치 서비스가 꺼져 있어요. 위치를 켜고 다시 시도해 주세요.');
+        } else {
+          _snack('위치 권한이 필요해요.');
+        }
         return;
       }
     }
     await ref.read(appSettingsProvider.notifier).setLocationRecallEnabled(enabled);
-    _snack(enabled ? '위치 기반 회상 알림을 켰어요.' : '위치 기반 회상 알림을 껐어요.');
+    if (mounted) {
+      _snack(enabled ? '위치 기반 회상 알림을 켰어요.' : '위치 기반 회상 알림을 껐어요.');
+    }
   }
 
   Future<void> _logout() async {

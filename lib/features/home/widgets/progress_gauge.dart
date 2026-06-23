@@ -50,10 +50,19 @@ class ProgressGauge extends StatelessWidget {
           ),
           if (project.scheduleType == ScheduleType.monthly) ...[
             const SizedBox(height: 14),
-            _MonthlyDots(filled: _filledMonthsThisYear(), scheme: scheme),
-            const SizedBox(height: 6),
-            Text('올해 ${_filledMonthsThisYear().length}/12개월 기록',
-                style: text.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+            Builder(builder: (_) {
+              final filled = _filledMonthsThisYear(); // 한 번만 계산.
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _MonthlyDots(filled: filled, scheme: scheme),
+                  const SizedBox(height: 6),
+                  Text('올해 ${filled.length}/12개월 기록',
+                      style: text.labelSmall
+                          ?.copyWith(color: scheme.onSurfaceVariant)),
+                ],
+              );
+            }),
           ],
         ],
       ),

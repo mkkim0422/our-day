@@ -33,7 +33,8 @@ class CaptureScreen extends ConsumerStatefulWidget {
   ConsumerState<CaptureScreen> createState() => _CaptureScreenState();
 }
 
-class _CaptureScreenState extends ConsumerState<CaptureScreen> {
+class _CaptureScreenState extends ConsumerState<CaptureScreen>
+    with WidgetsBindingObserver {
   final _camera = CameraService();
   final _picker = ImagePicker();
 
@@ -50,11 +51,13 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _setup();
   }
 
   Future<void> _setup() async {
     final granted = await _camera.requestPermission();
+    if (!mounted) return;
     if (!granted) {
       setState(() {
         _initializing = false;
@@ -64,15 +67,36 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     }
     try {
       await _camera.initialize();
+      // 초기화 도중 화면이 사라졌으면 새로 만든 컨트롤러를 즉시 해제(하드웨어 누수 방지).
+      if (!mounted) {
+        await _camera.dispose();
+        return;
+      }
     } on CameraException catch (e) {
-      setState(() => _error = e.description ?? e.code);
+      if (mounted) setState(() => _error = e.description ?? e.code);
     } finally {
       if (mounted) setState(() => _initializing = false);
     }
   }
 
+  /// OS가 백그라운드에서 카메라를 강제 회수하므로(특히 Android), 화면이 가려지면
+  /// 컨트롤러를 해제하고 복귀 시 재초기화한다(검은 프리뷰·예외 방지).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_permissionDenied || _error != null) return;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      _camera.dispose();
+      if (mounted) setState(() {}); // isReady=false → 프리뷰 숨김.
+    } else if (state == AppLifecycleState.resumed && !_camera.isReady) {
+      setState(() => _initializing = true);
+      _setup();
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _camera.dispose();
     super.dispose();
   }
@@ -151,7 +175,12 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
           IgnorePointer(
             child: Opacity(
               opacity: _overlayOpacity,
-              child: Image.file(File(_referencePath!), fit: BoxFit.cover),
+              child: Image.file(
+                File(_referencePath!),
+                fit: BoxFit.cover,
+                // 기준 원본이 없으면(예: 복원 후) 깨진 오버레이 대신 숨김.
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              ),
             ),
           ),
         const GuideGrid(),
@@ -286,23 +315,27 @@ class _ShutterButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: busy ? null : onTap,
-      child: Container(
-        width: 72,
-        height: 72,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withValues(alpha: 0.2),
-          border: Border.all(color: Colors.white, width: 4),
+    return Semantics(
+      button: true,
+      label: '촬영',
+      child: GestureDetector(
+        onTap: busy ? null : onTap,
+        child: Container(
+          width: 72,
+          height: 72,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white.withValues(alpha: 0.2),
+            border: Border.all(color: Colors.white, width: 4),
+          ),
+          child: busy
+              ? const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
+                )
+              : const Icon(Icons.circle, color: Colors.white, size: 52),
         ),
-        child: busy
-            ? const Padding(
-                padding: EdgeInsets.all(20),
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: Colors.white),
-              )
-            : const Icon(Icons.circle, color: Colors.white, size: 52),
       ),
     );
   }
