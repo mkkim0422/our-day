@@ -7,6 +7,7 @@ import '../../data/db/app_database.dart';
 import '../../services/providers.dart';
 import '../../services/timelapse/timelapse_service.dart';
 import '../../core/utils/age_label.dart';
+import '../../data/repositories/providers.dart';
 import '../capture/alignment_meta.dart';
 import '../home/home_providers.dart';
 import 'collage_poster_screen.dart';
@@ -52,6 +53,28 @@ class _CompareViewState extends ConsumerState<CompareView> {
   final _compareKey = GlobalKey();
   bool _exporting = false;
 
+  // 구성원 필터(아이디어7): null이면 전체.
+  String? _filterMemberId;
+  Set<String>? _filterCaptureIds;
+
+  Future<void> _selectMember(String? memberId) async {
+    if (memberId == null) {
+      setState(() {
+        _filterMemberId = null;
+        _filterCaptureIds = null;
+      });
+      return;
+    }
+    final ids =
+        await ref.read(memberRepositoryProvider).captureIdsForMember(memberId);
+    if (mounted) {
+      setState(() {
+        _filterMemberId = memberId;
+        _filterCaptureIds = ids;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final capturesAsync = ref.watch(capturesProvider(widget.project.id));
@@ -68,13 +91,41 @@ class _CompareViewState extends ConsumerState<CompareView> {
     );
   }
 
-  Widget _content(List<Capture> asc) {
+  Widget _content(List<Capture> ascAll) {
+    final members = ref.watch(membersProvider(widget.project.id)).value ?? const [];
+    // 구성원 필터 적용.
+    final asc = _filterCaptureIds == null
+        ? ascAll
+        : ascAll.where((c) => _filterCaptureIds!.contains(c.id)).toList();
+
+    if (asc.length < 2) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        children: [
+          if (members.isNotEmpty) _memberFilter(members),
+          const SizedBox(height: 40),
+          Center(
+            child: Text(
+              '이 구성원이 태그된 사진이 2컷 미만이에요.\n다른 구성원이나 전체를 선택해 보세요.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ),
+        ],
+      );
+    }
+
     final first = asc.first;
     final last = asc.last;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
+        if (members.isNotEmpty) ...[
+          _memberFilter(members),
+          const SizedBox(height: 16),
+        ],
         Text('그때 vs 지금', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 12),
         // 내보내기 대상 — RepaintBoundary로 감싸 PNG 캡처(한글 라벨·워터마크 포함).
@@ -215,6 +266,35 @@ class _CompareViewState extends ConsumerState<CompareView> {
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
+  }
+
+  /// 구성원 필터 칩(전체 + 각 구성원). 선택 시 그 구성원이 태그된 컷만 본다.
+  Widget _memberFilter(List<Member> members) {
+    return SizedBox(
+      height: 40,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: const Text('전체'),
+              selected: _filterMemberId == null,
+              onSelected: (_) => _selectMember(null),
+            ),
+          ),
+          for (final m in members)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                label: Text(m.name),
+                selected: _filterMemberId == m.id,
+                onSelected: (_) => _selectMember(m.id),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   void _showError(String msg) {

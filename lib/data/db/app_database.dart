@@ -14,7 +14,8 @@ part 'app_database.g.dart';
 /// 로컬 우선(local-first) DB (1·9장).
 ///
 /// 사진 원본/썸네일은 파일시스템, DB에는 경로·메타데이터만 보관.
-@DriftDatabase(tables: [Accounts, Projects, Members, Captures, Places])
+@DriftDatabase(
+    tables: [Accounts, Projects, Members, CaptureMembers, Captures, Places])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -22,11 +23,15 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          // v2: 구성원 태깅 N:N 테이블 추가(아이디어7).
+          if (from < 2) await m.createTable(captureMembers);
+        },
         beforeOpen: (details) async {
           // FK 제약(onDelete cascade/setNull) 활성화.
           await customStatement('PRAGMA foreign_keys = ON');

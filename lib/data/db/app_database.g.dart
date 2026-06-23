@@ -2348,6 +2348,230 @@ class CapturesCompanion extends UpdateCompanion<Capture> {
   }
 }
 
+class $CaptureMembersTable extends CaptureMembers
+    with TableInfo<$CaptureMembersTable, CaptureMember> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CaptureMembersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _captureIdMeta = const VerificationMeta(
+    'captureId',
+  );
+  @override
+  late final GeneratedColumn<String> captureId = GeneratedColumn<String>(
+    'capture_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES captures (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _memberIdMeta = const VerificationMeta(
+    'memberId',
+  );
+  @override
+  late final GeneratedColumn<String> memberId = GeneratedColumn<String>(
+    'member_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES members (id) ON DELETE CASCADE',
+    ),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [captureId, memberId];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'capture_members';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CaptureMember> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('capture_id')) {
+      context.handle(
+        _captureIdMeta,
+        captureId.isAcceptableOrUnknown(data['capture_id']!, _captureIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_captureIdMeta);
+    }
+    if (data.containsKey('member_id')) {
+      context.handle(
+        _memberIdMeta,
+        memberId.isAcceptableOrUnknown(data['member_id']!, _memberIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_memberIdMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {captureId, memberId};
+  @override
+  CaptureMember map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CaptureMember(
+      captureId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}capture_id'],
+      )!,
+      memberId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}member_id'],
+      )!,
+    );
+  }
+
+  @override
+  $CaptureMembersTable createAlias(String alias) {
+    return $CaptureMembersTable(attachedDatabase, alias);
+  }
+}
+
+class CaptureMember extends DataClass implements Insertable<CaptureMember> {
+  final String captureId;
+  final String memberId;
+  const CaptureMember({required this.captureId, required this.memberId});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['capture_id'] = Variable<String>(captureId);
+    map['member_id'] = Variable<String>(memberId);
+    return map;
+  }
+
+  CaptureMembersCompanion toCompanion(bool nullToAbsent) {
+    return CaptureMembersCompanion(
+      captureId: Value(captureId),
+      memberId: Value(memberId),
+    );
+  }
+
+  factory CaptureMember.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CaptureMember(
+      captureId: serializer.fromJson<String>(json['captureId']),
+      memberId: serializer.fromJson<String>(json['memberId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'captureId': serializer.toJson<String>(captureId),
+      'memberId': serializer.toJson<String>(memberId),
+    };
+  }
+
+  CaptureMember copyWith({String? captureId, String? memberId}) =>
+      CaptureMember(
+        captureId: captureId ?? this.captureId,
+        memberId: memberId ?? this.memberId,
+      );
+  CaptureMember copyWithCompanion(CaptureMembersCompanion data) {
+    return CaptureMember(
+      captureId: data.captureId.present ? data.captureId.value : this.captureId,
+      memberId: data.memberId.present ? data.memberId.value : this.memberId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CaptureMember(')
+          ..write('captureId: $captureId, ')
+          ..write('memberId: $memberId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(captureId, memberId);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CaptureMember &&
+          other.captureId == this.captureId &&
+          other.memberId == this.memberId);
+}
+
+class CaptureMembersCompanion extends UpdateCompanion<CaptureMember> {
+  final Value<String> captureId;
+  final Value<String> memberId;
+  final Value<int> rowid;
+  const CaptureMembersCompanion({
+    this.captureId = const Value.absent(),
+    this.memberId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CaptureMembersCompanion.insert({
+    required String captureId,
+    required String memberId,
+    this.rowid = const Value.absent(),
+  }) : captureId = Value(captureId),
+       memberId = Value(memberId);
+  static Insertable<CaptureMember> custom({
+    Expression<String>? captureId,
+    Expression<String>? memberId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (captureId != null) 'capture_id': captureId,
+      if (memberId != null) 'member_id': memberId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CaptureMembersCompanion copyWith({
+    Value<String>? captureId,
+    Value<String>? memberId,
+    Value<int>? rowid,
+  }) {
+    return CaptureMembersCompanion(
+      captureId: captureId ?? this.captureId,
+      memberId: memberId ?? this.memberId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (captureId.present) {
+      map['capture_id'] = Variable<String>(captureId.value);
+    }
+    if (memberId.present) {
+      map['member_id'] = Variable<String>(memberId.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CaptureMembersCompanion(')
+          ..write('captureId: $captureId, ')
+          ..write('memberId: $memberId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2356,6 +2580,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $MembersTable members = $MembersTable(this);
   late final $PlacesTable places = $PlacesTable(this);
   late final $CapturesTable captures = $CapturesTable(this);
+  late final $CaptureMembersTable captureMembers = $CaptureMembersTable(this);
   late final Index idxCaptureProjectTime = Index(
     'idx_capture_project_time',
     'CREATE INDEX idx_capture_project_time ON captures (project_id, captured_at)',
@@ -2370,6 +2595,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     members,
     places,
     captures,
+    captureMembers,
     idxCaptureProjectTime,
   ];
   @override
@@ -2401,6 +2627,20 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('captures', kind: UpdateKind.update)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'captures',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('capture_members', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'members',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('capture_members', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -3201,6 +3441,24 @@ final class $$MembersTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
+
+  static MultiTypedResultKey<$CaptureMembersTable, List<CaptureMember>>
+  _captureMembersRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.captureMembers,
+    aliasName: 'members__id__capture_members__member_id',
+  );
+
+  $$CaptureMembersTableProcessedTableManager get captureMembersRefs {
+    final manager = $$CaptureMembersTableTableManager(
+      $_db,
+      $_db.captureMembers,
+    ).filter((f) => f.memberId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_captureMembersRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$MembersTableFilterComposer
@@ -3248,6 +3506,31 @@ class $$MembersTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> captureMembersRefs(
+    Expression<bool> Function($$CaptureMembersTableFilterComposer f) f,
+  ) {
+    final $$CaptureMembersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.captureMembers,
+      getReferencedColumn: (t) => t.memberId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CaptureMembersTableFilterComposer(
+            $db: $db,
+            $table: $db.captureMembers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 }
 
@@ -3339,6 +3622,31 @@ class $$MembersTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> captureMembersRefs<T extends Object>(
+    Expression<T> Function($$CaptureMembersTableAnnotationComposer a) f,
+  ) {
+    final $$CaptureMembersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.captureMembers,
+      getReferencedColumn: (t) => t.memberId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CaptureMembersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.captureMembers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$MembersTableTableManager
@@ -3354,7 +3662,7 @@ class $$MembersTableTableManager
           $$MembersTableUpdateCompanionBuilder,
           (Member, $$MembersTableReferences),
           Member,
-          PrefetchHooks Function({bool projectId})
+          PrefetchHooks Function({bool projectId, bool captureMembersRefs})
         > {
   $$MembersTableTableManager(_$AppDatabase db, $MembersTable table)
     : super(
@@ -3403,47 +3711,72 @@ class $$MembersTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({projectId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (projectId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.projectId,
-                                referencedTable: $$MembersTableReferences
-                                    ._projectIdTable(db),
-                                referencedColumn: $$MembersTableReferences
-                                    ._projectIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
+          prefetchHooksCallback:
+              ({projectId = false, captureMembersRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (captureMembersRefs) db.captureMembers,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (projectId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.projectId,
+                                    referencedTable: $$MembersTableReferences
+                                        ._projectIdTable(db),
+                                    referencedColumn: $$MembersTableReferences
+                                        ._projectIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (captureMembersRefs)
+                        await $_getPrefetchedData<
+                          Member,
+                          $MembersTable,
+                          CaptureMember
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MembersTableReferences
+                              ._captureMembersRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MembersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).captureMembersRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.memberId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -3460,7 +3793,7 @@ typedef $$MembersTableProcessedTableManager =
       $$MembersTableUpdateCompanionBuilder,
       (Member, $$MembersTableReferences),
       Member,
-      PrefetchHooks Function({bool projectId})
+      PrefetchHooks Function({bool projectId, bool captureMembersRefs})
     >;
 typedef $$PlacesTableCreateCompanionBuilder =
     PlacesCompanion Function({
@@ -3985,6 +4318,24 @@ final class $$CapturesTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
+
+  static MultiTypedResultKey<$CaptureMembersTable, List<CaptureMember>>
+  _captureMembersRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.captureMembers,
+    aliasName: 'captures__id__capture_members__capture_id',
+  );
+
+  $$CaptureMembersTableProcessedTableManager get captureMembersRefs {
+    final manager = $$CaptureMembersTableTableManager(
+      $_db,
+      $_db.captureMembers,
+    ).filter((f) => f.captureId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_captureMembersRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$CapturesTableFilterComposer
@@ -4086,6 +4437,31 @@ class $$CapturesTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> captureMembersRefs(
+    Expression<bool> Function($$CaptureMembersTableFilterComposer f) f,
+  ) {
+    final $$CaptureMembersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.captureMembers,
+      getReferencedColumn: (t) => t.captureId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CaptureMembersTableFilterComposer(
+            $db: $db,
+            $table: $db.captureMembers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 }
 
@@ -4273,6 +4649,31 @@ class $$CapturesTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> captureMembersRefs<T extends Object>(
+    Expression<T> Function($$CaptureMembersTableAnnotationComposer a) f,
+  ) {
+    final $$CaptureMembersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.captureMembers,
+      getReferencedColumn: (t) => t.captureId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CaptureMembersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.captureMembers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$CapturesTableTableManager
@@ -4288,7 +4689,11 @@ class $$CapturesTableTableManager
           $$CapturesTableUpdateCompanionBuilder,
           (Capture, $$CapturesTableReferences),
           Capture,
-          PrefetchHooks Function({bool projectId, bool placeId})
+          PrefetchHooks Function({
+            bool projectId,
+            bool placeId,
+            bool captureMembersRefs,
+          })
         > {
   $$CapturesTableTableManager(_$AppDatabase db, $CapturesTable table)
     : super(
@@ -4363,7 +4768,392 @@ class $$CapturesTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({projectId = false, placeId = false}) {
+          prefetchHooksCallback:
+              ({
+                projectId = false,
+                placeId = false,
+                captureMembersRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (captureMembersRefs) db.captureMembers,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (projectId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.projectId,
+                                    referencedTable: $$CapturesTableReferences
+                                        ._projectIdTable(db),
+                                    referencedColumn: $$CapturesTableReferences
+                                        ._projectIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+                        if (placeId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.placeId,
+                                    referencedTable: $$CapturesTableReferences
+                                        ._placeIdTable(db),
+                                    referencedColumn: $$CapturesTableReferences
+                                        ._placeIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (captureMembersRefs)
+                        await $_getPrefetchedData<
+                          Capture,
+                          $CapturesTable,
+                          CaptureMember
+                        >(
+                          currentTable: table,
+                          referencedTable: $$CapturesTableReferences
+                              ._captureMembersRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$CapturesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).captureMembersRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.captureId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$CapturesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CapturesTable,
+      Capture,
+      $$CapturesTableFilterComposer,
+      $$CapturesTableOrderingComposer,
+      $$CapturesTableAnnotationComposer,
+      $$CapturesTableCreateCompanionBuilder,
+      $$CapturesTableUpdateCompanionBuilder,
+      (Capture, $$CapturesTableReferences),
+      Capture,
+      PrefetchHooks Function({
+        bool projectId,
+        bool placeId,
+        bool captureMembersRefs,
+      })
+    >;
+typedef $$CaptureMembersTableCreateCompanionBuilder =
+    CaptureMembersCompanion Function({
+      required String captureId,
+      required String memberId,
+      Value<int> rowid,
+    });
+typedef $$CaptureMembersTableUpdateCompanionBuilder =
+    CaptureMembersCompanion Function({
+      Value<String> captureId,
+      Value<String> memberId,
+      Value<int> rowid,
+    });
+
+final class $$CaptureMembersTableReferences
+    extends BaseReferences<_$AppDatabase, $CaptureMembersTable, CaptureMember> {
+  $$CaptureMembersTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $CapturesTable _captureIdTable(_$AppDatabase db) =>
+      db.captures.createAlias('capture_members__capture_id__captures__id');
+
+  $$CapturesTableProcessedTableManager get captureId {
+    final $_column = $_itemColumn<String>('capture_id')!;
+
+    final manager = $$CapturesTableTableManager(
+      $_db,
+      $_db.captures,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_captureIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $MembersTable _memberIdTable(_$AppDatabase db) =>
+      db.members.createAlias('capture_members__member_id__members__id');
+
+  $$MembersTableProcessedTableManager get memberId {
+    final $_column = $_itemColumn<String>('member_id')!;
+
+    final manager = $$MembersTableTableManager(
+      $_db,
+      $_db.members,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_memberIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$CaptureMembersTableFilterComposer
+    extends Composer<_$AppDatabase, $CaptureMembersTable> {
+  $$CaptureMembersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  $$CapturesTableFilterComposer get captureId {
+    final $$CapturesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.captureId,
+      referencedTable: $db.captures,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CapturesTableFilterComposer(
+            $db: $db,
+            $table: $db.captures,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$MembersTableFilterComposer get memberId {
+    final $$MembersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memberId,
+      referencedTable: $db.members,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembersTableFilterComposer(
+            $db: $db,
+            $table: $db.members,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CaptureMembersTableOrderingComposer
+    extends Composer<_$AppDatabase, $CaptureMembersTable> {
+  $$CaptureMembersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  $$CapturesTableOrderingComposer get captureId {
+    final $$CapturesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.captureId,
+      referencedTable: $db.captures,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CapturesTableOrderingComposer(
+            $db: $db,
+            $table: $db.captures,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$MembersTableOrderingComposer get memberId {
+    final $$MembersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memberId,
+      referencedTable: $db.members,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembersTableOrderingComposer(
+            $db: $db,
+            $table: $db.members,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CaptureMembersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CaptureMembersTable> {
+  $$CaptureMembersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  $$CapturesTableAnnotationComposer get captureId {
+    final $$CapturesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.captureId,
+      referencedTable: $db.captures,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$CapturesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.captures,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$MembersTableAnnotationComposer get memberId {
+    final $$MembersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memberId,
+      referencedTable: $db.members,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MembersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.members,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$CaptureMembersTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CaptureMembersTable,
+          CaptureMember,
+          $$CaptureMembersTableFilterComposer,
+          $$CaptureMembersTableOrderingComposer,
+          $$CaptureMembersTableAnnotationComposer,
+          $$CaptureMembersTableCreateCompanionBuilder,
+          $$CaptureMembersTableUpdateCompanionBuilder,
+          (CaptureMember, $$CaptureMembersTableReferences),
+          CaptureMember,
+          PrefetchHooks Function({bool captureId, bool memberId})
+        > {
+  $$CaptureMembersTableTableManager(
+    _$AppDatabase db,
+    $CaptureMembersTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CaptureMembersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CaptureMembersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CaptureMembersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> captureId = const Value.absent(),
+                Value<String> memberId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CaptureMembersCompanion(
+                captureId: captureId,
+                memberId: memberId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String captureId,
+                required String memberId,
+                Value<int> rowid = const Value.absent(),
+              }) => CaptureMembersCompanion.insert(
+                captureId: captureId,
+                memberId: memberId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$CaptureMembersTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({captureId = false, memberId = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [],
@@ -4383,29 +5173,31 @@ class $$CapturesTableTableManager
                       dynamic
                     >
                   >(state) {
-                    if (projectId) {
+                    if (captureId) {
                       state =
                           state.withJoin(
                                 currentTable: table,
-                                currentColumn: table.projectId,
-                                referencedTable: $$CapturesTableReferences
-                                    ._projectIdTable(db),
-                                referencedColumn: $$CapturesTableReferences
-                                    ._projectIdTable(db)
-                                    .id,
+                                currentColumn: table.captureId,
+                                referencedTable: $$CaptureMembersTableReferences
+                                    ._captureIdTable(db),
+                                referencedColumn:
+                                    $$CaptureMembersTableReferences
+                                        ._captureIdTable(db)
+                                        .id,
                               )
                               as T;
                     }
-                    if (placeId) {
+                    if (memberId) {
                       state =
                           state.withJoin(
                                 currentTable: table,
-                                currentColumn: table.placeId,
-                                referencedTable: $$CapturesTableReferences
-                                    ._placeIdTable(db),
-                                referencedColumn: $$CapturesTableReferences
-                                    ._placeIdTable(db)
-                                    .id,
+                                currentColumn: table.memberId,
+                                referencedTable: $$CaptureMembersTableReferences
+                                    ._memberIdTable(db),
+                                referencedColumn:
+                                    $$CaptureMembersTableReferences
+                                        ._memberIdTable(db)
+                                        .id,
                               )
                               as T;
                     }
@@ -4421,19 +5213,19 @@ class $$CapturesTableTableManager
       );
 }
 
-typedef $$CapturesTableProcessedTableManager =
+typedef $$CaptureMembersTableProcessedTableManager =
     ProcessedTableManager<
       _$AppDatabase,
-      $CapturesTable,
-      Capture,
-      $$CapturesTableFilterComposer,
-      $$CapturesTableOrderingComposer,
-      $$CapturesTableAnnotationComposer,
-      $$CapturesTableCreateCompanionBuilder,
-      $$CapturesTableUpdateCompanionBuilder,
-      (Capture, $$CapturesTableReferences),
-      Capture,
-      PrefetchHooks Function({bool projectId, bool placeId})
+      $CaptureMembersTable,
+      CaptureMember,
+      $$CaptureMembersTableFilterComposer,
+      $$CaptureMembersTableOrderingComposer,
+      $$CaptureMembersTableAnnotationComposer,
+      $$CaptureMembersTableCreateCompanionBuilder,
+      $$CaptureMembersTableUpdateCompanionBuilder,
+      (CaptureMember, $$CaptureMembersTableReferences),
+      CaptureMember,
+      PrefetchHooks Function({bool captureId, bool memberId})
     >;
 
 class $AppDatabaseManager {
@@ -4449,4 +5241,6 @@ class $AppDatabaseManager {
       $$PlacesTableTableManager(_db, _db.places);
   $$CapturesTableTableManager get captures =>
       $$CapturesTableTableManager(_db, _db.captures);
+  $$CaptureMembersTableTableManager get captureMembers =>
+      $$CaptureMembersTableTableManager(_db, _db.captureMembers);
 }

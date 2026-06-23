@@ -7,6 +7,7 @@ import '../../services/backup/local_backup_service.dart';
 import '../../services/location/location_service.dart';
 import '../../services/providers.dart';
 import '../../services/settings/app_settings.dart';
+import '../members/members_screen.dart';
 import 'settings_providers.dart';
 
 /// ③ 설정 / 백업 — 데이터 안전(분실 대비)과 권한 관리.
@@ -40,6 +41,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           if (widget.project != null) ...[
             _sectionTitle('프로젝트'),
             _birthdayTile(settingsAsync.value),
+            ListTile(
+              leading: const Icon(Icons.group_outlined),
+              title: const Text('구성원'),
+              subtitle: const Text('가족을 추가해 사진에 태그하고 필터링'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => MembersScreen(project: widget.project!)),
+              ),
+            ),
             const Divider(height: 32),
           ],
           _sectionTitle('계정'),

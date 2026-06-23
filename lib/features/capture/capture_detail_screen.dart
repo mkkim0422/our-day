@@ -29,6 +29,29 @@ class CaptureDetailScreen extends ConsumerStatefulWidget {
 
 class _CaptureDetailScreenState extends ConsumerState<CaptureDetailScreen> {
   late String? _note = widget.capture.note;
+  Set<String> _taggedIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTags();
+  }
+
+  Future<void> _loadTags() async {
+    final ids = await ref
+        .read(memberRepositoryProvider)
+        .memberIdsForCapture(widget.capture.id);
+    if (mounted) setState(() => _taggedIds = ids.toSet());
+  }
+
+  Future<void> _toggleMember(String memberId) async {
+    final next = Set<String>.from(_taggedIds);
+    next.contains(memberId) ? next.remove(memberId) : next.add(memberId);
+    setState(() => _taggedIds = next);
+    await ref
+        .read(memberRepositoryProvider)
+        .setMembersForCapture(widget.capture.id, next.toList());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -158,6 +181,7 @@ class _CaptureDetailScreenState extends ConsumerState<CaptureDetailScreen> {
               ),
             ),
           ),
+          _memberTags(context),
           const SizedBox(height: 12),
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
@@ -209,6 +233,35 @@ class _CaptureDetailScreenState extends ConsumerState<CaptureDetailScreen> {
     if (mounted) {
       setState(() => _note = result.trim().isEmpty ? null : result.trim());
     }
+  }
+
+  /// "함께한 사람" 태그 — 프로젝트 구성원이 있을 때만 표시(아이디어7).
+  Widget _memberTags(BuildContext context) {
+    final members =
+        ref.watch(membersProvider(widget.project.id)).value ?? const [];
+    if (members.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('함께한 사람',
+              style: TextStyle(color: Colors.white54, fontSize: 12)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final m in members)
+                FilterChip(
+                  label: Text(m.name),
+                  selected: _taggedIds.contains(m.id),
+                  onSelected: (_) => _toggleMember(m.id),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _editHeight() async {

@@ -41,7 +41,7 @@ class Projects extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-/// Member — 프로젝트 구성원(v1.5+에서 멀티 참여 시 활성화).
+/// Member — 프로젝트 구성원(아이디어7 — 구성원 태깅·필터).
 class Members extends Table {
   TextColumn get id => text()();
   TextColumn get projectId =>
@@ -51,6 +51,17 @@ class Members extends Table {
 
   @override
   Set<Column> get primaryKey => {id};
+}
+
+/// CaptureMember — 촬영↔구성원 N:N 태깅(아이디어7). "이 사진에 누가 있는지".
+class CaptureMembers extends Table {
+  TextColumn get captureId =>
+      text().references(Captures, #id, onDelete: KeyAction.cascade)();
+  TextColumn get memberId =>
+      text().references(Members, #id, onDelete: KeyAction.cascade)();
+
+  @override
+  Set<Column> get primaryKey => {captureId, memberId};
 }
 
 /// Capture — 촬영 1건. 4가지 입력 경로 결과가 모두 이 1건으로 저장(②-1).
