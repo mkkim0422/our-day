@@ -155,6 +155,37 @@ class NotificationService {
     }
   }
 
+  /// 위치 기반 회상 알림을 **즉시** 표시 (5장).
+  ///
+  /// 그 장소에 다시 왔을 때 "여기, 그때 우리" + 예전 사진으로 진입하게 한다.
+  /// 탭하면 [latest](그 장소의 최근 촬영)를 오버레이 기준으로 촬영 화면에 진입
+  /// (payload의 captureId → RootScreen 라우팅 → 같은 구도 재촬영).
+  Future<void> showPlaceRecall({
+    required Place place,
+    required Capture latest,
+    required String projectId,
+  }) async {
+    if (!_ready) return;
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: _channelDesc,
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
+    await _plugin.show(
+      id: _placeRecallId(place.id),
+      title: '여기, 그때 우리 📍',
+      body: '«${place.label}»에서 찍은 추억이 있어요. 같은 구도로 다시 한 컷 남겨볼까요?',
+      notificationDetails: details,
+      payload: NotificationPayload(projectId: projectId, captureId: latest.id)
+          .encode(),
+    );
+  }
+
   /// 이 프로젝트가 예약한 알림 전부 취소.
   Future<void> cancelForProject(String projectId) async {
     if (!_ready) return;
@@ -211,4 +242,7 @@ class NotificationService {
   int _periodId(String projectId) => (projectId.hashCode & 0x7fffffff) % 1000000;
   int _nostalgiaId(String projectId, int index) =>
       1000000 + ((projectId.hashCode & 0x7fffffff) % 1000000) * 10 + index;
+  // 장소 회상 알림 ID — 예약 알림 ID 영역과 겹치지 않게 별도 범위.
+  int _placeRecallId(String placeId) =>
+      20000000 + (placeId.hashCode & 0x7fffffff) % 1000000;
 }

@@ -43,6 +43,15 @@ class CaptureRepository {
     return q.getSingleOrNull();
   }
 
+  /// 특정 장소에서 가장 최근에 찍은 사진(위치 회상 알림의 오버레이 기준, 5장).
+  Future<Capture?> latestForPlace(String placeId) {
+    final q = _db.select(_db.captures)
+      ..where((c) => c.placeId.equals(placeId))
+      ..orderBy([(c) => OrderingTerm.desc(c.capturedAt)])
+      ..limit(1);
+    return q.getSingleOrNull();
+  }
+
   Future<int> countByProject(String projectId) async {
     final count = _db.captures.id.count();
     final q = _db.selectOnly(_db.captures)

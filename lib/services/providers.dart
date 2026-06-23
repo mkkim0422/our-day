@@ -1,9 +1,15 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../data/repositories/providers.dart';
 import 'backup/local_backup_service.dart';
 import 'camera/photo_storage.dart';
+import 'location/location_service.dart';
 import 'notifications/notification_service.dart';
+import 'settings/app_settings.dart';
 import 'share/share_service.dart';
 import 'timelapse/timelapse_service.dart';
 
@@ -26,6 +32,44 @@ final shareServiceProvider =
 final localBackupServiceProvider = Provider<LocalBackupService>(
   (ref) => LocalBackupService(ref.watch(databaseProvider)),
 );
+
+/// 위치 서비스 (5장). 기본은 geolocator 구현.
+final locationServiceProvider =
+    Provider<LocationService>((ref) => const GeolocatorLocationService());
+
+/// 앱 설정(파일 저장) — 위치 회상 opt-in·장소별 마지막 알림 시각 등(5장).
+final appSettingsProvider =
+    AsyncNotifierProvider<AppSettingsController, AppSettingsData>(
+        AppSettingsController.new);
+
+class AppSettingsController extends AsyncNotifier<AppSettingsData> {
+  AppSettingsStore? _store;
+
+  @override
+  Future<AppSettingsData> build() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final store = AppSettingsStore(File(p.join(dir.path, 'settings.json')));
+    _store = store;
+    return store.load();
+  }
+
+  Future<void> setLocationRecallEnabled(bool enabled) async {
+    final current = state.value ?? const AppSettingsData();
+    final next = current.copyWith(locationRecallEnabled: enabled);
+    await _store?.save(next);
+    state = AsyncData(next);
+  }
+
+  /// 장소 회상 알림을 띄운 시각 기록(빈도 제한용).
+  Future<void> recordPlaceNotified(String placeId, DateTime at) async {
+    final current = state.value ?? const AppSettingsData();
+    final map = Map<String, DateTime>.from(current.placeLastNotified)
+      ..[placeId] = at;
+    final next = current.copyWith(placeLastNotified: map);
+    await _store?.save(next);
+    state = AsyncData(next);
+  }
+}
 
 /// 로컬 알림 서비스(단일 인스턴스). main에서 init() 후 화면들이 공유.
 final notificationServiceProvider =

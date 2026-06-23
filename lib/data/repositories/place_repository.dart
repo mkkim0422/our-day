@@ -1,8 +1,7 @@
-import 'dart:math' as math;
-
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/utils/geo_distance.dart';
 import '../db/app_database.dart';
 
 /// 장소(Place) 접근. 위치 기반 회상 알림(5장)의 지오펜스 기준.
@@ -42,7 +41,7 @@ class PlaceRepository {
     Place? best;
     double bestDist = double.infinity;
     for (final p in places) {
-      final d = _haversineMeters(lat, lng, p.latitude, p.longitude);
+      final d = GeoDistance.haversineMeters(lat, lng, p.latitude, p.longitude);
       if (d <= toleranceM && d < bestDist) {
         best = p;
         bestDist = d;
@@ -57,6 +56,7 @@ class PlaceRepository {
     required double latitude,
     required double longitude,
     int radiusM = 200,
+    bool geofenceEnabled = false,
   }) async {
     final id = _uuid.v4();
     await _db.into(_db.places).insert(
@@ -68,6 +68,7 @@ class PlaceRepository {
             longitude: longitude,
             radiusM: Value(radiusM),
             captureCount: const Value(1),
+            geofenceEnabled: Value(geofenceEnabled),
           ),
         );
     return (_db.select(_db.places)..where((p) => p.id.equals(id)))
@@ -86,20 +87,4 @@ class PlaceRepository {
     return (_db.update(_db.places)..where((p) => p.id.equals(id)))
         .write(PlacesCompanion(geofenceEnabled: Value(enabled)));
   }
-
-  /// 두 좌표 간 거리(m) — Haversine.
-  static double _haversineMeters(
-      double lat1, double lon1, double lat2, double lon2) {
-    const earthR = 6371000.0;
-    final dLat = _rad(lat2 - lat1);
-    final dLon = _rad(lon2 - lon1);
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_rad(lat1)) *
-            math.cos(_rad(lat2)) *
-            math.sin(dLon / 2) *
-            math.sin(dLon / 2);
-    return earthR * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-  }
-
-  static double _rad(double deg) => deg * math.pi / 180.0;
 }

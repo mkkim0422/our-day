@@ -26,6 +26,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final accountAsync = ref.watch(currentAccountProvider);
     final backupsAsync = ref.watch(backupsProvider);
+    final settingsAsync = ref.watch(appSettingsProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('설정 · 백업')),
@@ -71,13 +72,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
           ),
           const Divider(height: 32),
-          _sectionTitle('보안 · 권한 (준비 중)'),
-          const ListTile(
-            leading: Icon(Icons.location_on_outlined),
-            title: Text('위치 기반 회상 알림'),
-            subtitle: Text('같은 장소 재방문 시 그때 사진 알림 (작업 예정)'),
-            enabled: false,
+          _sectionTitle('위치 기반 회상 알림'),
+          SwitchListTile(
+            secondary: const Icon(Icons.location_on_outlined),
+            title: const Text('위치 기반 회상 알림'),
+            subtitle: const Text('같은 장소에 다시 오면 그때 사진을 띄워드려요. 위치는 이 용도로만 쓰여요.'),
+            value: settingsAsync.value?.locationRecallEnabled ?? false,
+            onChanged:
+                settingsAsync.isLoading ? null : _toggleLocationRecall,
           ),
+          const Divider(height: 32),
+          _sectionTitle('보안 (준비 중)'),
           const ListTile(
             leading: Icon(Icons.lock_outline),
             title: Text('앱 잠금 (생체인증)'),
@@ -215,6 +220,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _toggleLocationRecall(bool enabled) async {
+    // 켤 때만 위치 권한을 요청(5장 — opt-in, 강요하지 않음).
+    if (enabled) {
+      final granted = await ref.read(locationServiceProvider).ensurePermission();
+      if (!granted) {
+        _snack('위치 권한이 필요해요. 기기 설정에서 위치 접근을 허용해 주세요.');
+        return;
+      }
+    }
+    await ref.read(appSettingsProvider.notifier).setLocationRecallEnabled(enabled);
+    _snack(enabled ? '위치 기반 회상 알림을 켰어요.' : '위치 기반 회상 알림을 껐어요.');
   }
 
   Future<void> _logout() async {

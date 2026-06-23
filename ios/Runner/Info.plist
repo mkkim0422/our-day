@@ -2,6 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- 위치 기반 회상 알림(5장): 전경(whileInUse)만 사용, opt-in. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>같은 장소에 다시 왔을 때 그때 찍은 가족 사진을 보여드리기 위해 위치를 사용합니다. 이 용도로만 쓰이며 언제든 끌 수 있어요.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

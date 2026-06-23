@@ -94,13 +94,17 @@ class _AlignmentAdjusterScreenState
             )
           : AlignmentMeta.identity;
 
+      // 위치 태깅(5장): opt-in이면 현재 좌표로 Place를 만들거나 재사용해 연결한다.
+      // (회상 알림으로 진입한 경우엔 이미 placeId가 주어짐.)
+      final placeId = widget.placeId ?? await _resolvePlaceId();
+
       final capture = await captures.create(
         project: widget.project,
         filePath: stored.originalPath,
         thumbPath: stored.thumbPath,
         capturedAt: widget.capturedAt,
         alignmentMeta: meta.isIdentity ? null : meta.toMap(),
-        placeId: widget.placeId,
+        placeId: placeId,
       );
 
       // 저장 후 알림 재예약: 다음 기간 리마인더 갱신 + 이 사진의 기념일(회상) 추가.
@@ -113,6 +117,34 @@ class _AlignmentAdjusterScreenState
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// opt-in 시 현재 위치로 Place를 찾거나(반경 내 재사용) 새로 만들어 id 반환.
+  /// 위치 회상이 꺼져 있거나 위치를 못 얻으면 null(촬영은 정상 저장).
+  Future<String?> _resolvePlaceId() async {
+    final settings = ref.read(appSettingsProvider).value;
+    if (settings == null || !settings.locationRecallEnabled) return null;
+
+    final point = await ref.read(locationServiceProvider).current();
+    if (point == null) return null;
+
+    final placeRepo = ref.read(placeRepositoryProvider);
+    final existing = await placeRepo.findNear(
+        widget.project.id, point.latitude, point.longitude);
+    if (existing != null) {
+      await placeRepo.incrementCaptureCount(existing.id);
+      return existing.id;
+    }
+    final created = await placeRepo.create(
+      projectId: widget.project.id,
+      label: '촬영 장소 '
+          '(${point.latitude.toStringAsFixed(3)}, '
+          '${point.longitude.toStringAsFixed(3)})',
+      latitude: point.latitude,
+      longitude: point.longitude,
+      geofenceEnabled: true, // opt-in 상태이므로 회상 대상으로 등록.
+    );
+    return created.id;
   }
 
   @override

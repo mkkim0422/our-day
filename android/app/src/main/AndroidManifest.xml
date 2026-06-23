@@ -7,6 +7,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- 위치 기반 회상 알림(5장): 전경(whileInUse)만 사용 — opt-in. "항상 허용"은
+         배경 지오펜스 도입 시 별도 요청(ACCESS_BACKGROUND_LOCATION). -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <application
         android:label="그날 우리"
         android:name="${applicationName}"
