@@ -16,7 +16,8 @@ class CameraService {
     return status.isGranted;
   }
 
-  /// 후면 카메라로 초기화. 인쇄 품질 위해 고해상도 프리셋(7-1장).
+  /// 후면 카메라로 초기화. 인쇄 품질 위해 고해상도부터 시도하되, 기기가 지원하는
+  /// surface 조합을 못 찾으면(일부 삼성 등 CameraX 3-스트림 한계) 단계적으로 낮춘다.
   Future<void> initialize() async {
     final cameras = await availableCameras();
     if (cameras.isEmpty) {
@@ -26,14 +27,32 @@ class CameraService {
       (c) => c.lensDirection == CameraLensDirection.back,
       orElse: () => cameras.first,
     );
-    final controller = CameraController(
-      back,
+
+    // 고화질 → 호환 순으로 폴백.
+    const presets = [
       ResolutionPreset.veryHigh,
-      enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.jpeg,
-    );
-    await controller.initialize();
-    _controller = controller;
+      ResolutionPreset.high,
+      ResolutionPreset.medium,
+    ];
+    CameraException? lastError;
+    for (final preset in presets) {
+      final controller = CameraController(
+        back,
+        preset,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
+      );
+      try {
+        await controller.initialize();
+        _controller = controller;
+        return;
+      } on CameraException catch (e) {
+        lastError = e;
+        await controller.dispose();
+      }
+    }
+    throw lastError ??
+        CameraException('init_failed', '카메라를 초기화할 수 없습니다.');
   }
 
   /// 촬영 → 임시 파일(XFile). 저장은 PhotoStorage가 담당.
