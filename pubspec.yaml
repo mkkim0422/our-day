@@ -63,6 +63,8 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   drift_dev: ^2.34.0
   build_runner: ^2.15.0
+  # 타임랩스 테스트에서 문서 디렉터리를 임시 폴더로 주입(fake)하는 데 사용.
+  path_provider_platform_interface: ^2.1.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

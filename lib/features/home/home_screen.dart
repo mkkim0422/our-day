@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ads/ad_slot.dart';
 import '../../data/db/app_database.dart';
 import '../capture/capture_screen.dart';
+import '../compare/compare_screen.dart';
 import 'home_providers.dart';
 import 'widgets/progress_gauge.dart';
 
@@ -21,11 +22,18 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final capturesAsync = ref.watch(capturesProvider(project.id));
+    final canCompare = (capturesAsync.value?.length ?? 0) >= 2;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(project.title),
         actions: [
+          if (canCompare)
+            IconButton(
+              icon: const Icon(Icons.auto_awesome_motion_outlined),
+              tooltip: '비교 · 타임랩스',
+              onPressed: () => _openCompare(context),
+            ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: '설정',
@@ -64,8 +72,17 @@ class HomeScreen extends ConsumerWidget {
         if (captures.isEmpty)
           _EmptyTimeline(onTap: () => _openCapture(context, ref, null))
         else
-          _TimelineGrid(captures: captures),
+          _TimelineGrid(
+            captures: captures,
+            onTapCell: (_) => _openCompare(context),
+          ),
       ],
+    );
+  }
+
+  Future<void> _openCompare(BuildContext context) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => CompareScreen(project: project)),
     );
   }
 
@@ -154,8 +171,9 @@ class _CtaCard extends StatelessWidget {
 
 /// 과거 기록 그리드(썸네일 + 기간 라벨).
 class _TimelineGrid extends StatelessWidget {
-  const _TimelineGrid({required this.captures});
+  const _TimelineGrid({required this.captures, required this.onTapCell});
   final List<Capture> captures;
+  final ValueChanged<Capture> onTapCell;
 
   @override
   Widget build(BuildContext context) {
@@ -169,43 +187,52 @@ class _TimelineGrid extends StatelessWidget {
         mainAxisSpacing: 8,
         childAspectRatio: 0.78,
       ),
-      itemBuilder: (context, i) => _TimelineCell(capture: captures[i]),
+      itemBuilder: (context, i) => _TimelineCell(
+        capture: captures[i],
+        onTap: () => onTapCell(captures[i]),
+      ),
     );
   }
 }
 
 class _TimelineCell extends StatelessWidget {
-  const _TimelineCell({required this.capture});
+  const _TimelineCell({required this.capture, required this.onTap});
   final Capture capture;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final thumb = File(capture.thumbPath);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: thumb.existsSync()
-                ? Image.file(thumb, fit: BoxFit.cover)
-                : Container(
-                    color: scheme.surfaceContainerHighest,
-                    child: Icon(Icons.image_not_supported_outlined,
-                        color: scheme.onSurfaceVariant),
-                  ),
+    // 썸네일 탭 → 비교/타임랩스(명세 ②: 상세/비교 진입).
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: thumb.existsSync()
+                  ? Image.file(thumb, fit: BoxFit.cover)
+                  : Container(
+                      color: scheme.surfaceContainerHighest,
+                      child: Icon(Icons.image_not_supported_outlined,
+                          color: scheme.onSurfaceVariant),
+                    ),
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          capture.periodLabel,
-          style: Theme.of(context).textTheme.labelSmall,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-        ),
-      ],
+          const SizedBox(height: 4),
+          Text(
+            capture.periodLabel,
+            style: Theme.of(context).textTheme.labelSmall,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 }

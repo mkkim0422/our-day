@@ -24,7 +24,7 @@
 
 | 용도 | 후보 | 상태/결정 | 추가 시점 |
 |---|---|---|---|
-| **타임랩스(이미지→mp4)** | ~~`ffmpeg_kit_flutter`~~ → **`ffmpeg_kit_flutter_new`** | ⚠️ 원본 ffmpeg-kit는 2025-01-06 **공식 폐기**(바이너리 2025-04 내림, 코덱 특허/유지보수 이슈). 커뮤니티 포크 `ffmpeg_kit_flutter_new`(GPL)가 현실적 대안. **GPL이 상용앱 배포에 영향** → 착수 시 ①GPL 수용 ②네이티브 인코더(MediaCodec/AVAssetWriter) 직접 구현 중 택1 결정 필요. | 작업 #6 |
+| **타임랩스(이미지→영상)** | ~~`ffmpeg_kit_flutter`~~ → **순수 Dart `image`(GIF)** | ✅ **작업 #6 결정**: 원본 ffmpeg-kit는 2025-01-06 공식 폐기(바이너리 2025-04 내림). 커뮤니티 포크 `ffmpeg_kit_flutter_new`는 **GPL**이라 상용 배포에 부담, 네이티브 인코더는 플랫폼별 구현 비용 큼 → **MVP는 추가 의존성 없이 `image` 패키지로 애니메이션 GIF 생성**(네이티브 코드 0, 양 플랫폼 동일, 단톡방·SNS 호환). 한계는 256색·용량. 고화질 mp4가 필요해지면 `TimelapseService`의 프레임 합성 파이프라인 뒤에 네이티브 인코더(MediaCodec/AVAssetWriter)를 끼워 교체(별도 작업). | 작업 #6 ✅ |
 | **지오펜싱(백그라운드 위치)** | **`native_geofence`** | 네이티브 CLLocationManager/GeofencingClient 래핑, 배터리 효율적, iOS14+/Android23+. 인수인계서 배터리·한도 우려에 부합. Kotlin **1.9.25+** 필요. opt-in 강제. | 작업 #8 |
 | 소셜 로그인 | `google_sign_in`, `sign_in_with_apple` | 표준. 백업 스코프(드라이브)와 함께 추가. | 작업 #7 |
 | 클라우드 백업 | `googleapis`(Drive) + iCloud(파일기반) | 백업 서비스 인터페이스 뒤로 격리(8장). | 작업 #7 |

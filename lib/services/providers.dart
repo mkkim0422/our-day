@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'camera/photo_storage.dart';
 import 'notifications/notification_service.dart';
+import 'share/share_service.dart';
+import 'timelapse/timelapse_service.dart';
 
 /// 서비스 계층 의존성 주입(riverpod).
 ///
@@ -9,6 +11,14 @@ import 'notifications/notification_service.dart';
 /// 무상태 서비스만 여기서 provider로 제공한다.
 
 final photoStorageProvider = Provider<PhotoStorage>((ref) => PhotoStorage());
+
+/// 타임랩스(애니메이션 GIF) 생성 서비스 (⑤·⑥장).
+final timelapseServiceProvider =
+    Provider<TimelapseService>((ref) => TimelapseService());
+
+/// 공유 / 내보내기 서비스 (⑥장).
+final shareServiceProvider =
+    Provider<ShareService>((ref) => const ShareService());
 
 /// 로컬 알림 서비스(단일 인스턴스). main에서 init() 후 화면들이 공유.
 final notificationServiceProvider =
