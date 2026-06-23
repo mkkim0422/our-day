@@ -69,6 +69,20 @@ class AppSettingsController extends AsyncNotifier<AppSettingsData> {
     await _store?.save(next);
     state = AsyncData(next);
   }
+
+  /// 프로젝트 주인공 생일 설정/해제(아이디어1 — 나이 라벨).
+  Future<void> setProjectBirthday(String projectId, DateTime? birthday) async {
+    final current = state.value ?? const AppSettingsData();
+    final map = Map<String, DateTime>.from(current.projectBirthdays);
+    if (birthday == null) {
+      map.remove(projectId);
+    } else {
+      map[projectId] = birthday;
+    }
+    final next = current.copyWith(projectBirthdays: map);
+    await _store?.save(next);
+    state = AsyncData(next);
+  }
 }
 
 /// 로컬 알림 서비스(단일 인스턴스). main에서 init() 후 화면들이 공유.

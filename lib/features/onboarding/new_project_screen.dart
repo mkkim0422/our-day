@@ -21,6 +21,7 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
   final _titleController = TextEditingController();
   ScheduleType _scheduleType = ScheduleType.monthly;
   EventPeg _eventPeg = EventPeg.none;
+  DateTime? _birthday; // 주인공 생일(선택, 아이디어1 나이 라벨용)
   bool _saving = false;
 
   @override
@@ -51,10 +52,29 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
       }
       await notifications.scheduleForProject(project, const []);
 
+      // 생일(선택) 저장 — 사진에 나이 라벨 표시(아이디어1).
+      if (_birthday != null) {
+        await ref
+            .read(appSettingsProvider.notifier)
+            .setProjectBirthday(project.id, _birthday);
+      }
+
       if (mounted) Navigator.of(context).pop<Project>(project);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _pickBirthday() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _birthday ?? now,
+      firstDate: DateTime(now.year - 120),
+      lastDate: now,
+      helpText: '주인공 생일',
+    );
+    if (picked != null) setState(() => _birthday = picked);
   }
 
   /// 주기 유형별 기본 schedule_config(2장). 세부 설정은 추후 설정 화면에서 조정.
@@ -112,6 +132,20 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
           _EventPegSelector(
             value: _eventPeg,
             onChanged: (v) => setState(() => _eventPeg = v),
+          ),
+          const SizedBox(height: 28),
+          Text('주인공 생일 (선택)', style: text.titleMedium),
+          const SizedBox(height: 4),
+          Text('넣으면 사진마다 나이가 자동으로 표시돼요',
+              style: text.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _pickBirthday,
+            icon: const Icon(Icons.cake_outlined),
+            label: Text(_birthday == null
+                ? '생일 선택'
+                : '${_birthday!.year}.${_birthday!.month.toString().padLeft(2, '0')}.${_birthday!.day.toString().padLeft(2, '0')}'),
           ),
           const SizedBox(height: 36),
           FilledButton(

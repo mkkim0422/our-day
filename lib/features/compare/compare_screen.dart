@@ -6,9 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/db/app_database.dart';
 import '../../services/providers.dart';
 import '../../services/timelapse/timelapse_service.dart';
+import '../../core/utils/age_label.dart';
 import '../capture/alignment_meta.dart';
 import '../home/home_providers.dart';
 import 'collage_poster_screen.dart';
+import 'onion_skin_screen.dart';
 import 'widgets/timelapse_player.dart';
 
 /// ⑤ 비교 / 타임랩스 — "가치 실현 순간"(변화 체감).
@@ -77,7 +79,12 @@ class _CompareViewState extends ConsumerState<CompareView> {
         // 내보내기 대상 — RepaintBoundary로 감싸 PNG 캡처(한글 라벨·워터마크 포함).
         RepaintBoundary(
           key: _compareKey,
-          child: _CompareCard(first: first, last: last),
+          child: _CompareCard(
+            first: first,
+            last: last,
+            birthday: ref.watch(appSettingsProvider).value?.projectBirthdays[
+                widget.project.id],
+          ),
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
@@ -96,6 +103,16 @@ class _CompareViewState extends ConsumerState<CompareView> {
         ),
         const SizedBox(height: 12),
         _CompareScrubber(framesAsc: asc),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => OnionSkinScreen(project: widget.project),
+            ),
+          ),
+          icon: const Icon(Icons.layers_outlined),
+          label: const Text('변화의 잔상 보기'),
+        ),
         const SizedBox(height: 28),
         Text('타임랩스', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
@@ -198,10 +215,15 @@ class _CompareViewState extends ConsumerState<CompareView> {
 
 /// "그때 vs 지금" 비교 카드 — 내보내기 이미지로도 그대로 캡처된다.
 class _CompareCard extends StatelessWidget {
-  const _CompareCard({required this.first, required this.last});
+  const _CompareCard({
+    required this.first,
+    required this.last,
+    this.birthday,
+  });
 
   final Capture first;
   final Capture last;
+  final DateTime? birthday;
 
   @override
   Widget build(BuildContext context) {
@@ -217,9 +239,11 @@ class _CompareCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: _Side(capture: first, caption: '그때')),
+              Expanded(
+                  child: _Side(capture: first, caption: '그때', birthday: birthday)),
               const SizedBox(width: 8),
-              Expanded(child: _Side(capture: last, caption: '지금')),
+              Expanded(
+                  child: _Side(capture: last, caption: '지금', birthday: birthday)),
             ],
           ),
           const SizedBox(height: 10),
@@ -245,15 +269,18 @@ class _CompareCard extends StatelessWidget {
 }
 
 class _Side extends StatelessWidget {
-  const _Side({required this.capture, required this.caption});
+  const _Side({required this.capture, required this.caption, this.birthday});
 
   final Capture capture;
   final String caption;
+  final DateTime? birthday;
 
   @override
   Widget build(BuildContext context) {
     final file = File(capture.filePath);
     final scheme = Theme.of(context).colorScheme;
+    final age =
+        birthday != null ? AgeLabel.format(birthday!, capture.capturedAt) : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -286,6 +313,15 @@ class _Side extends StatelessWidget {
               .titleSmall
               ?.copyWith(fontWeight: FontWeight.w700),
         ),
+        if (age != null)
+          Text(
+            age,
+            textAlign: TextAlign.center,
+            style: Theme.of(context)
+                .textTheme
+                .labelSmall
+                ?.copyWith(color: scheme.primary, fontWeight: FontWeight.w600),
+          ),
       ],
     );
   }

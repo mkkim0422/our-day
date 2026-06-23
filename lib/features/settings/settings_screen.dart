@@ -6,6 +6,7 @@ import '../../data/repositories/providers.dart';
 import '../../services/backup/local_backup_service.dart';
 import '../../services/location/location_service.dart';
 import '../../services/providers.dart';
+import '../../services/settings/app_settings.dart';
 import 'settings_providers.dart';
 
 /// ③ 설정 / 백업 — 데이터 안전(분실 대비)과 권한 관리.
@@ -14,7 +15,10 @@ import 'settings_providers.dart';
 /// 직접 공유하거나 기기 변경 시 복원하는 방식(9장 local-first). 구글 드라이브/iCloud
 /// 자동 백업과 소셜 로그인은 동일 구조 위에 올라갈 예정(작업 #future).
 class SettingsScreen extends ConsumerStatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.project});
+
+  /// 현재 프로젝트(있으면 "주인공 생일" 등 프로젝트별 설정 노출).
+  final Project? project;
 
   @override
   ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
@@ -33,6 +37,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       appBar: AppBar(title: const Text('설정 · 백업')),
       body: ListView(
         children: [
+          if (widget.project != null) ...[
+            _sectionTitle('프로젝트'),
+            _birthdayTile(settingsAsync.value),
+            const Divider(height: 32),
+          ],
           _sectionTitle('계정'),
           accountAsync.when(
             loading: () => const ListTile(title: Text('확인 중…')),
@@ -220,6 +229,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _snack('복원 실패: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Widget _birthdayTile(AppSettingsData? settings) {
+    final birthday = settings?.projectBirthdays[widget.project!.id];
+    final label = birthday == null
+        ? '설정 안 함'
+        : '${birthday.year}.${birthday.month.toString().padLeft(2, '0')}.${birthday.day.toString().padLeft(2, '0')}';
+    return ListTile(
+      leading: const Icon(Icons.cake_outlined),
+      title: const Text('주인공 생일'),
+      subtitle: Text('$label · 사진에 나이가 표시돼요'),
+      trailing: birthday != null
+          ? IconButton(
+              icon: const Icon(Icons.clear),
+              tooltip: '생일 지우기',
+              onPressed: () => ref
+                  .read(appSettingsProvider.notifier)
+                  .setProjectBirthday(widget.project!.id, null),
+            )
+          : null,
+      onTap: _pickBirthday,
+    );
+  }
+
+  Future<void> _pickBirthday() async {
+    final now = DateTime.now();
+    final current =
+        ref.read(appSettingsProvider).value?.projectBirthdays[widget.project!.id];
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current ?? now,
+      firstDate: DateTime(now.year - 120),
+      lastDate: now,
+      helpText: '주인공 생일',
+    );
+    if (picked != null) {
+      await ref
+          .read(appSettingsProvider.notifier)
+          .setProjectBirthday(widget.project!.id, picked);
     }
   }
 

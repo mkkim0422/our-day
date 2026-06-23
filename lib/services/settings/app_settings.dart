@@ -9,37 +9,50 @@ class AppSettingsData {
   const AppSettingsData({
     this.locationRecallEnabled = false,
     this.placeLastNotified = const {},
+    this.projectBirthdays = const {},
   });
 
   final bool locationRecallEnabled;
   final Map<String, DateTime> placeLastNotified;
 
+  /// 프로젝트별 주인공 생일(아이디어1 — 나이 라벨). projectId → 생일.
+  final Map<String, DateTime> projectBirthdays;
+
   AppSettingsData copyWith({
     bool? locationRecallEnabled,
     Map<String, DateTime>? placeLastNotified,
+    Map<String, DateTime>? projectBirthdays,
   }) =>
       AppSettingsData(
         locationRecallEnabled:
             locationRecallEnabled ?? this.locationRecallEnabled,
         placeLastNotified: placeLastNotified ?? this.placeLastNotified,
+        projectBirthdays: projectBirthdays ?? this.projectBirthdays,
       );
 
   Map<String, dynamic> toJson() => {
         'locationRecallEnabled': locationRecallEnabled,
         'placeLastNotified': placeLastNotified
             .map((k, v) => MapEntry(k, v.toIso8601String())),
+        'projectBirthdays':
+            projectBirthdays.map((k, v) => MapEntry(k, v.toIso8601String())),
       };
 
   factory AppSettingsData.fromJson(Map<String, dynamic> json) {
-    final raw = (json['placeLastNotified'] as Map?) ?? const {};
-    final parsed = <String, DateTime>{};
-    raw.forEach((k, v) {
-      final d = DateTime.tryParse('$v');
-      if (d != null) parsed['$k'] = d;
-    });
+    Map<String, DateTime> parseDates(Object? raw) {
+      final map = (raw as Map?) ?? const {};
+      final out = <String, DateTime>{};
+      map.forEach((k, v) {
+        final d = DateTime.tryParse('$v');
+        if (d != null) out['$k'] = d;
+      });
+      return out;
+    }
+
     return AppSettingsData(
       locationRecallEnabled: json['locationRecallEnabled'] as bool? ?? false,
-      placeLastNotified: parsed,
+      placeLastNotified: parseDates(json['placeLastNotified']),
+      projectBirthdays: parseDates(json['projectBirthdays']),
     );
   }
 }

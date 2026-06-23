@@ -63,7 +63,8 @@ class _MainShellState extends ConsumerState<MainShell> {
             icon: const Icon(Icons.settings_outlined),
             tooltip: '설정',
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              MaterialPageRoute(
+                  builder: (_) => SettingsScreen(project: project)),
             ),
           ),
         ],

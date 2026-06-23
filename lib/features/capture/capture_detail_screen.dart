@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/utils/age_label.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repositories/providers.dart';
 import '../../services/providers.dart';
@@ -88,6 +89,11 @@ class _CaptureDetailScreenState extends ConsumerState<CaptureDetailScreen> {
 
   Widget _infoBar(BuildContext context) {
     final hasNote = _note != null && _note!.isNotEmpty;
+    final birthday =
+        ref.watch(appSettingsProvider).value?.projectBirthdays[widget.project.id];
+    final age = birthday != null
+        ? AgeLabel.format(birthday, widget.capture.capturedAt)
+        : null;
     return Container(
       width: double.infinity,
       color: Colors.black,
@@ -96,7 +102,9 @@ class _CaptureDetailScreenState extends ConsumerState<CaptureDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            _formatDate(widget.capture.capturedAt),
+            age == null
+                ? _formatDate(widget.capture.capturedAt)
+                : '${_formatDate(widget.capture.capturedAt)} · $age',
             style: const TextStyle(color: Colors.white70, fontSize: 13),
           ),
           const SizedBox(height: 8),
