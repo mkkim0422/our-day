@@ -18,16 +18,33 @@ import 'widgets/timelapse_player.dart';
 /// 광고 규칙(6-1장): 이 화면은 **감정의 정점(비교 뷰)** 이므로 광고를 넣지 않는다.
 /// 전면 광고는 오직 타임랩스 "생성 완료" 직후의 자연스러운 휴지점에서만 허용
 /// (실제 AdMob 연동은 작업 #9 — 아래 생성 완료 지점에 훅만 표시).
-class CompareScreen extends ConsumerStatefulWidget {
+/// 비교·타임랩스를 독립 화면으로 띄울 때 쓰는 얇은 래퍼(상세/알림에서 push).
+/// 탭(MainShell)에서는 [CompareView] 본문만 직접 사용한다.
+class CompareScreen extends StatelessWidget {
   const CompareScreen({super.key, required this.project});
 
   final Project project;
 
   @override
-  ConsumerState<CompareScreen> createState() => _CompareScreenState();
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('비교 · 타임랩스')),
+      body: CompareView(project: project),
+    );
+  }
 }
 
-class _CompareScreenState extends ConsumerState<CompareScreen> {
+/// 비교/타임랩스 본문(Scaffold 없음 — 탭/화면 양쪽에서 재사용).
+class CompareView extends ConsumerStatefulWidget {
+  const CompareView({super.key, required this.project});
+
+  final Project project;
+
+  @override
+  ConsumerState<CompareView> createState() => _CompareViewState();
+}
+
+class _CompareViewState extends ConsumerState<CompareView> {
   final _compareKey = GlobalKey();
   bool _exporting = false;
 
@@ -35,18 +52,15 @@ class _CompareScreenState extends ConsumerState<CompareScreen> {
   Widget build(BuildContext context) {
     final capturesAsync = ref.watch(capturesProvider(widget.project.id));
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('비교 · 타임랩스')),
-      body: capturesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('불러오기 오류: $e')),
-        data: (captures) {
-          if (captures.length < 2) return const _NeedMore();
-          // repository는 최신순(desc) → 타임랩스/비교는 시간순(asc).
-          final asc = captures.reversed.toList(growable: false);
-          return _content(asc);
-        },
-      ),
+    return capturesAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('불러오기 오류: $e')),
+      data: (captures) {
+        if (captures.length < 2) return const _NeedMore();
+        // repository는 최신순(desc) → 타임랩스/비교는 시간순(asc).
+        final asc = captures.reversed.toList(growable: false);
+        return _content(asc);
+      },
     );
   }
 

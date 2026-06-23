@@ -9,7 +9,7 @@ import '../services/notifications/notification_service.dart';
 import '../services/providers.dart';
 import 'capture/capture_screen.dart';
 import 'home/home_providers.dart';
-import 'home/home_screen.dart';
+import 'home/main_shell.dart';
 import 'onboarding/new_project_screen.dart';
 
 /// 앱 루트 게이트.
@@ -124,13 +124,8 @@ class _RootScreenState extends ConsumerState<RootScreen>
       ),
       data: (projects) {
         if (projects.isEmpty) return const _WelcomeScreen();
-        // 선택된 프로젝트(없거나 삭제됐으면 가장 최근 것)를 홈으로.
-        final selectedId = ref.watch(selectedProjectIdProvider);
-        final current = projects.firstWhere(
-          (p) => p.id == selectedId,
-          orElse: () => projects.first,
-        );
-        return HomeScreen(project: current);
+        // 프로젝트 선택/전환은 MainShell이 담당(하단 네비 + 프로젝트 칩).
+        return const MainShell();
       },
     );
   }
