@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 콜드스타트 런치 화면: 브랜드 테라코타 배경(이후 인앱 애니메이션 인트로로 전환). -->
+<!-- 콜드스타트 런치 배경 — 아이콘/인트로와 동일한 연핑크→라일락 그라데이션(이음매 자연스럽게). -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@color/brand_terracotta" />
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:startColor="#F2ADC8"
+                android:endColor="#C4A2E0"
+                android:angle="270" />
+        </shape>
+    </item>
 </layer-list>
