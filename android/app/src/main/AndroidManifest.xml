@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 꾸미기 프리미엄 폰트(google_fonts 런타임 다운로드) — 릴리스에도 필요. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- 킬러 기능: 오버레이 정렬 카메라(4장) -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />

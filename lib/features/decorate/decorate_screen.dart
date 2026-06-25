@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 
+import '../../core/utils/age_label.dart';
 import '../../data/db/app_database.dart';
 import '../../services/providers.dart';
-import 'decoration_themes.dart';
+import 'skin.dart';
+import 'skin_card.dart';
 
-/// 사진 꾸미기 — 폴라로이드풍 프레임 10종 + 문구를 입혀 이미지로 공유/저장.
+/// 사진 꾸미기 — **프리미엄 스킨**(카테고리별 큐레이션 템플릿)을 골라 문구·성장데이터와
+/// 함께 입혀 이미지로 공유/저장. 딥리서치 기반 다축 재설계.
 class DecorateScreen extends ConsumerStatefulWidget {
   const DecorateScreen({super.key, required this.project, required this.capture});
 
@@ -20,20 +24,23 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
   final _boundaryKey = GlobalKey();
   late final TextEditingController _caption =
       TextEditingController(text: _defaultCaption());
-  int _themeIndex = 0;
-  bool _showDate = true;
-  bool _busy = false;
 
-  String _fmtDate() {
-    final d = widget.capture.capturedAt;
-    return '${d.year}.${d.month.toString().padLeft(2, '0')}.${d.day.toString().padLeft(2, '0')}';
-  }
+  SkinCategory _category = SkinCategory.minimal;
+  late Skin _skin = skinsForCategory(_category).first;
+  bool _showDate = true;
+  bool _showAge = true;
+  bool _showHeight = true;
+  bool _busy = false;
 
   String _defaultCaption() {
     final note = widget.capture.note;
     if (note != null && note.trim().isNotEmpty) return note.trim();
+    return '우리, 그날';
+  }
+
+  String _fmtDate() {
     final d = widget.capture.capturedAt;
-    return '우리, ${d.year}.${d.month}.${d.day}';
+    return '${d.year}.${d.month.toString().padLeft(2, '0')}.${d.day.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -46,6 +53,9 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
+      // 구글폰트가 로드된 뒤 캡처해야 폴백 폰트로 찍히지 않는다.
+      await GoogleFonts.pendingFonts([GoogleFonts.getFont(_skin.font)]);
+      await Future<void>.delayed(const Duration(milliseconds: 60));
       final share = ref.read(shareServiceProvider);
       final path =
           await share.captureBoundaryToPng(_boundaryKey, pixelRatio: 3);
@@ -62,8 +72,16 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = kDecorThemes[_themeIndex];
+    final settings = ref.watch(appSettingsProvider).value;
+    final birthday = settings?.projectBirthdays[widget.project.id];
+    final ageText = birthday != null
+        ? AgeLabel.format(birthday, widget.capture.capturedAt)
+        : null;
+    final heightCm = settings?.captureHeights[widget.capture.id];
+    final heightText = heightCm != null ? '${heightCm.toStringAsFixed(1)}cm' : null;
+
     final scheme = Theme.of(context).colorScheme;
+    final skins = skinsForCategory(_category);
 
     return Scaffold(
       appBar: AppBar(
@@ -83,132 +101,175 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
       ),
       body: Column(
         children: [
-          // 미리보기(이 영역 그대로 PNG로 캡처).
           Expanded(
             child: Center(
               child: Padding(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(16),
                 child: FittedBox(
                   fit: BoxFit.contain,
                   child: RepaintBoundary(
                     key: _boundaryKey,
-                    child: SizedBox(
-                      width: 300,
-                      child: DecoratedCard(
-                        capture: widget.capture,
-                        caption: _caption.text,
-                        theme: theme,
-                        dateText: _showDate ? _fmtDate() : null,
-                      ),
+                    child: SkinCard(
+                      skin: _skin,
+                      capture: widget.capture,
+                      caption: _caption.text,
+                      dateText: _showDate ? _fmtDate() : null,
+                      ageText: (_showAge ? ageText : null),
+                      heightText: (_showHeight ? heightText : null),
                     ),
                   ),
                 ),
               ),
             ),
           ),
-          // 문구 입력 + 날짜 표시 토글.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _caption,
-                    textAlign: TextAlign.center,
-                    maxLength: 30,
-                    decoration: const InputDecoration(
-                      hintText: '문구를 입력하세요',
-                      counterText: '',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  avatar: Icon(Icons.event,
-                      size: 18,
-                      color: _showDate ? scheme.primary : scheme.onSurfaceVariant),
-                  label: const Text('날짜'),
-                  selected: _showDate,
-                  onSelected: (v) => setState(() => _showDate = v),
-                ),
-              ],
-            ),
-          ),
-          // 테마 선택.
-          SizedBox(
-            height: 96,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: kDecorThemes.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 10),
-              itemBuilder: (_, i) {
-                final t = kDecorThemes[i];
-                final selected = i == _themeIndex;
-                return GestureDetector(
-                  onTap: () => setState(() => _themeIndex = i),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          color: t.frame.length == 1 ? t.frame.first : null,
-                          gradient: t.frame.length > 1
-                              ? LinearGradient(colors: t.frame)
-                              : null,
-                          border: Border.all(
-                            color: selected
-                                ? scheme.primary
-                                : scheme.outlineVariant,
-                            width: selected ? 2.5 : 1,
-                          ),
-                        ),
-                        child: Center(
-                          child: Container(
-                            width: 30,
-                            height: 30,
-                            decoration: BoxDecoration(
-                              color: t.accent.withValues(alpha: 0.85),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(t.name,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: selected
-                                ? scheme.primary
-                                : scheme.onSurfaceVariant,
-                            fontWeight:
-                                selected ? FontWeight.w700 : FontWeight.w500,
-                          )),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: FilledButton.icon(
-                onPressed: _busy ? null : _share,
-                icon: const Icon(Icons.ios_share),
-                label: const Text('공유 · 저장'),
-                style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52)),
-              ),
-            ),
-          ),
+          _controls(context, scheme, ageText, heightText, skins),
         ],
+      ),
+    );
+  }
+
+  Widget _controls(BuildContext context, ColorScheme scheme, String? ageText,
+      String? heightText, List<Skin> skins) {
+    return Material(
+      color: scheme.surface,
+      elevation: 8,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 문구 + 표시 토글.
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _caption,
+                      textAlign: TextAlign.center,
+                      maxLength: 30,
+                      decoration: const InputDecoration(
+                        hintText: '문구를 입력하세요',
+                        counterText: '',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  _toggle('날짜', _showDate, (v) => setState(() => _showDate = v)),
+                  if (ageText != null)
+                    _toggle('나이', _showAge, (v) => setState(() => _showAge = v)),
+                  if (heightText != null)
+                    _toggle('키', _showHeight,
+                        (v) => setState(() => _showHeight = v)),
+                ],
+              ),
+              const SizedBox(height: 10),
+              // 카테고리 탭.
+              SizedBox(
+                height: 34,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    for (final c in SkinCategory.values)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(kCategoryNames[c]!),
+                          selected: _category == c,
+                          onSelected: (_) => setState(() {
+                            _category = c;
+                            _skin = skinsForCategory(c).first;
+                          }),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              // 스킨 썸네일.
+              SizedBox(
+                height: 92,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: skins.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 10),
+                  itemBuilder: (_, i) => _skinThumb(skins[i], scheme),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _toggle(String label, bool value, ValueChanged<bool> onChanged) {
+    return FilterChip(
+      label: Text(label),
+      selected: value,
+      onSelected: onChanged,
+    );
+  }
+
+  Widget _skinThumb(Skin skin, ColorScheme scheme) {
+    final selected = skin.id == _skin.id;
+    final isDark = skin.bg.first.computeLuminance() < 0.35;
+    return GestureDetector(
+      onTap: () => setState(() => _skin = skin),
+      child: SizedBox(
+        width: 64,
+        child: Column(
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: skin.bg.length == 1 ? skin.bg.first : null,
+                gradient: skin.bg.length > 1
+                    ? LinearGradient(colors: skin.bg)
+                    : null,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: selected ? scheme.primary : scheme.outlineVariant,
+                  width: selected ? 2.5 : 1,
+                ),
+              ),
+              child: Center(
+                child: Container(
+                  width: 34,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white24 : Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                        color: skin.accent.withValues(alpha: 0.6)),
+                  ),
+                  child: Center(
+                    child: Icon(Icons.favorite,
+                        size: 14, color: skin.accent),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(skin.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: selected ? scheme.primary : scheme.onSurfaceVariant,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                )),
+          ],
+        ),
       ),
     );
   }
