@@ -18,6 +18,11 @@ final capturesProvider = StreamProvider.family<List<Capture>, String>(
       ref.watch(captureRepositoryProvider).watchByProject(projectId),
 );
 
+/// "오늘의 추억" — 오늘과 같은 월·일의 과거 사진들(모든 프로젝트). 허브 상단 카드.
+final onThisDayProvider = FutureProvider<List<Capture>>(
+  (ref) => ref.watch(captureRepositoryProvider).onThisDay(DateTime.now()),
+);
+
 /// 현재 홈에 표시할 프로젝트 id(여러 프로젝트 전환용). null이면 가장 최근 것.
 class SelectedProjectId extends Notifier<String?> {
   @override

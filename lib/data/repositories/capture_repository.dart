@@ -43,6 +43,20 @@ class CaptureRepository {
     return q.getSingleOrNull();
   }
 
+  /// 오늘과 같은 월·일에 찍은 과거(이전 연도) 사진들 — "오늘의 추억"(6장 회상).
+  /// 모든 프로젝트 대상, 최신 연도 순.
+  Future<List<Capture>> onThisDay(DateTime now) async {
+    final all = await _db.select(_db.captures).get();
+    final memories = all
+        .where((c) =>
+            c.capturedAt.month == now.month &&
+            c.capturedAt.day == now.day &&
+            c.capturedAt.year < now.year)
+        .toList()
+      ..sort((a, b) => b.capturedAt.compareTo(a.capturedAt));
+    return memories;
+  }
+
   /// 특정 장소에서 가장 최근에 찍은 사진(위치 회상 알림의 오버레이 기준, 5장).
   Future<Capture?> latestForPlace(String placeId) {
     final q = _db.select(_db.captures)

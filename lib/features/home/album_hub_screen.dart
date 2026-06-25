@@ -5,7 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../data/db/app_database.dart';
+import '../../data/repositories/providers.dart';
+import '../capture/capture_detail_screen.dart';
 import '../onboarding/new_project_screen.dart';
+import '../settings/settings_screen.dart';
 import 'home_providers.dart';
 import 'project_shell.dart';
 
@@ -27,12 +30,32 @@ class AlbumHubScreen extends ConsumerWidget {
     final rest = projects.skip(1).toList();
     final text = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
+    final memories = ref.watch(onThisDayProvider).value ?? const <Capture>[];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('그날 우리')),
+      appBar: AppBar(
+        title: const Text('그날 우리'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: '설정',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: [
+          if (memories.isNotEmpty) ...[
+            _MemoryCard(
+              capture: memories.first,
+              moreCount: memories.length - 1,
+              onTap: () => _openMemory(context, ref, memories.first),
+            ),
+            const SizedBox(height: 24),
+          ],
           Text('이어서 보기',
               style: text.titleSmall?.copyWith(color: scheme.onSurfaceVariant)),
           const SizedBox(height: 10),
@@ -81,6 +104,109 @@ class AlbumHubScreen extends ConsumerWidget {
         MaterialPageRoute(builder: (_) => ProjectShell(project: created)),
       );
     }
+  }
+
+  /// 추억 카드 탭 → 그 사진의 프로젝트를 찾아 상세로.
+  Future<void> _openMemory(
+      BuildContext context, WidgetRef ref, Capture capture) async {
+    final project =
+        await ref.read(projectRepositoryProvider).getById(capture.projectId);
+    if (project == null || !context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            CaptureDetailScreen(project: project, capture: capture),
+      ),
+    );
+  }
+}
+
+/// "오늘의 추억" 카드 — 작년 오늘(또는 N년 전) 사진을 상단에 노출(6장 회상).
+class _MemoryCard extends StatelessWidget {
+  const _MemoryCard({
+    required this.capture,
+    required this.moreCount,
+    required this.onTap,
+  });
+
+  final Capture capture;
+  final int moreCount;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final years = DateTime.now().year - capture.capturedAt.year;
+    final img = File(capture.decoratedPath ?? capture.thumbPath);
+
+    return Material(
+      color: Colors.transparent,
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: const LinearGradient(
+            colors: AppTheme.brandGradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: SizedBox(
+                    width: 60,
+                    height: 60,
+                    child: img.existsSync()
+                        ? Image.file(img, fit: BoxFit.cover)
+                        : const ColoredBox(color: Colors.white24),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.auto_stories,
+                              color: Colors.white, size: 16),
+                          const SizedBox(width: 6),
+                          Text('오늘의 추억',
+                              style: text.labelLarge?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        years >= 1
+                            ? '$years년 전 오늘, 우리는 이런 모습이었어요'
+                            : '지난 오늘의 기록이 있어요',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.bodySmall?.copyWith(
+                            color: Colors.white.withValues(alpha: 0.95)),
+                      ),
+                      if (moreCount > 0)
+                        Text('+$moreCount장 더',
+                            style: text.labelSmall?.copyWith(
+                                color: Colors.white.withValues(alpha: 0.85))),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: Colors.white),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
