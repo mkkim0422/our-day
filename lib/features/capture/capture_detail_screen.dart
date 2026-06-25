@@ -81,16 +81,6 @@ class _CaptureDetailScreenState extends ConsumerState<CaptureDetailScreen> {
             title: Text('${current.periodLabel}  ·  ${_index + 1}/${captures.length}'),
             actions: [
               IconButton(
-                icon: const Icon(Icons.auto_awesome_outlined),
-                tooltip: '꾸미기',
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => DecorateScreen(
-                        project: widget.project, capture: current),
-                  ),
-                ),
-              ),
-              IconButton(
                 icon: const Icon(Icons.ios_share),
                 tooltip: '공유',
                 onPressed: () => _share(current),
@@ -322,7 +312,20 @@ class _CapturePageState extends ConsumerState<_CapturePage> {
             ),
           ),
           _memberTags(),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
+          // 꾸미기 — 가장 눈에 띄는 1차 액션(하단·풀폭).
+          FilledButton.icon(
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+            icon: const Icon(Icons.auto_awesome),
+            label: const Text('꾸미기'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => DecorateScreen(
+                    project: widget.project, capture: widget.capture),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.white,
