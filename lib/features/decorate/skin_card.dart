@@ -211,6 +211,53 @@ class SkinCard extends StatelessWidget {
   }
 }
 
+/// 스킨 선택용 미니 썸네일 — **실제 사진**에 배경·필터·모티프를 적용해 보여준다
+/// (폰트/텍스트는 생략해 가볍고 빠르게). 추상 스와치보다 즉시 판단 가능.
+class SkinThumb extends StatelessWidget {
+  const SkinThumb({super.key, required this.skin, required this.capture});
+
+  final Skin skin;
+  final Capture capture;
+
+  @override
+  Widget build(BuildContext context) {
+    final file = File(capture.thumbPath);
+    Widget photo = file.existsSync()
+        ? Image.file(file, fit: BoxFit.cover, gaplessPlayback: true)
+        : const ColoredBox(color: Color(0xFFE3DCD0));
+    if (skin.colorFilter != null) {
+      photo = ColorFiltered(colorFilter: skin.colorFilter!, child: photo);
+    }
+    return Container(
+      decoration: BoxDecoration(
+        color: skin.bg.length == 1 ? skin.bg.first : null,
+        gradient: skin.bg.length > 1
+            ? LinearGradient(colors: skin.bg)
+            : null,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(5),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(7),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            photo,
+            if (skin.motifs.isNotEmpty)
+              CustomPaint(
+                painter: SkinMotifsPainter(
+                  motifs: skin.motifs,
+                  accent: skin.accent,
+                  accent2: skin.accent2,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// 아치형 상단 마스크(보호 사진 프레임).
 class _ArchClipper extends CustomClipper<Path> {
   @override

@@ -21,6 +21,19 @@ class AppTheme {
     Color(0xFFC4A2E0),
   ];
 
+  // 디자인 토큰 — 반경 스케일(일관성).
+  static const double rMd = 12;
+  static const double rLg = 16;
+  static const double rXl = 22;
+  static const double rPill = 100;
+
+  // 여백 스케일(4의 배수).
+  static const double s1 = 4;
+  static const double s2 = 8;
+  static const double s3 = 12;
+  static const double s4 = 16;
+  static const double s6 = 24;
+
   static ThemeData light() => _build(Brightness.light);
   static ThemeData dark() => _build(Brightness.dark);
 
@@ -81,6 +94,85 @@ class AppTheme {
       ),
       dividerTheme: DividerThemeData(
           color: isLight ? _line : scheme.outlineVariant, thickness: 1),
+      // ── 컴포넌트 테마(기본 Material 느낌 제거, 일관된 프리미엄 룩) ──
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: scheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(rLg)),
+        margin: EdgeInsets.zero,
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: scheme.surfaceContainerHighest,
+        selectedColor: scheme.primary,
+        secondarySelectedColor: scheme.primary,
+        checkmarkColor: scheme.onPrimary,
+        labelStyle: TextStyle(
+            color: scheme.onSurface, fontWeight: FontWeight.w600, fontSize: 13),
+        secondaryLabelStyle: TextStyle(
+            color: scheme.onPrimary, fontWeight: FontWeight.w700, fontSize: 13),
+        side: BorderSide(color: isLight ? _line : scheme.outlineVariant),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(rPill)),
+        showCheckmark: false,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      ),
+      sliderTheme: SliderThemeData(
+        activeTrackColor: scheme.primary,
+        inactiveTrackColor: scheme.primary.withValues(alpha: 0.18),
+        thumbColor: scheme.primary,
+        overlayColor: scheme.primary.withValues(alpha: 0.12),
+        trackHeight: 4,
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((s) =>
+            s.contains(WidgetState.selected) ? scheme.onPrimary : null),
+        trackColor: WidgetStateProperty.resolveWith((s) =>
+            s.contains(WidgetState.selected) ? scheme.primary : null),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: scheme.surface,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(rLg)),
+        titleTextStyle: TextStyle(
+            color: scheme.onSurface,
+            fontSize: 18,
+            fontWeight: FontWeight.w800),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: _ink,
+        contentTextStyle: const TextStyle(color: Colors.white),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(rMd)),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: scheme.surface,
+        showDragHandle: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(rXl)),
+        ),
+      ),
+      tabBarTheme: TabBarThemeData(
+        labelColor: scheme.primary,
+        unselectedLabelColor: scheme.onSurfaceVariant,
+        indicatorColor: scheme.primary,
+        indicatorSize: TabBarIndicatorSize.label,
+        labelStyle:
+            const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+        unselectedLabelStyle:
+            const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+      ),
+      listTileTheme: ListTileThemeData(
+        iconColor: scheme.primary,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(rMd)),
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: scheme.primary,
+        foregroundColor: scheme.onPrimary,
+        elevation: 2,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(rPill)),
+      ),
       visualDensity: VisualDensity.adaptivePlatformDensity,
     );
   }

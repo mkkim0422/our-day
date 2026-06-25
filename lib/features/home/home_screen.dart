@@ -17,9 +17,6 @@ class HomeTab extends ConsumerWidget {
 
   final Project project;
 
-  /// 홈에 보여줄 최근 컷 수(전체는 앨범 탭에서).
-  static const _recentCount = 6;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final capturesAsync = ref.watch(capturesProvider(project.id));
@@ -34,10 +31,9 @@ class HomeTab extends ConsumerWidget {
     final now = DateTime.now();
     final done = hasCaptureInCurrentPeriod(project, captures, now);
     final latest = captures.isNotEmpty ? captures.first : null;
-    final recent = captures.take(_recentCount).toList();
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
         _CtaCard(done: done, onTap: () => _openCapture(context, ref, latest)),
         const SizedBox(height: 16),
@@ -48,7 +44,7 @@ class HomeTab extends ConsumerWidget {
         else ...[
           Row(
             children: [
-              Text('최근 기록', style: Theme.of(context).textTheme.titleMedium),
+              Text('모든 기록', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               Text('${captures.length}컷',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -56,8 +52,9 @@ class HomeTab extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 12),
+          // 전체 기록 그리드(앨범 탭 = 촬영 CTA + 진척 + 모든 사진).
           TimelineGrid(
-            captures: recent,
+            captures: captures,
             onTapCell: (c) => _openDetail(context, c),
           ),
         ],

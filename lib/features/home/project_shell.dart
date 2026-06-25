@@ -6,7 +6,6 @@ import '../capture/backfill_screen.dart';
 import '../capture/capture_screen.dart';
 import '../compare/compare_screen.dart';
 import '../settings/album_settings_screen.dart';
-import 'album_tab.dart';
 import 'home_providers.dart';
 import 'home_screen.dart';
 
@@ -26,8 +25,9 @@ class ProjectShell extends ConsumerStatefulWidget {
 
 class _ProjectShellState extends ConsumerState<ProjectShell>
     with SingleTickerProviderStateMixin {
-  late final TabController _tab = TabController(length: 3, vsync: this)
-    ..addListener(() => setState(() {})); // FAB/액션 노출이 탭에 따라 달라짐.
+  // 2탭으로 단순화: 앨범(촬영 CTA + 진척 + 전체 기록) / 추억(타임랩스·비교).
+  late final TabController _tab = TabController(length: 2, vsync: this)
+    ..addListener(() => setState(() {}));
 
   @override
   void dispose() {
@@ -43,24 +43,18 @@ class _ProjectShellState extends ConsumerState<ProjectShell>
       (p) => p.id == widget.project.id,
       orElse: () => widget.project,
     );
-    // 홈 탭은 CTA 카드가 단일 촬영 버튼이라 FAB를 두지 않는다(중복 제거).
-    // 타임라인 탭에만 촬영 FAB를 노출, 비교 탭은 없음.
-    final showFab = _tab.index == 1;
-    final onCompare = _tab.index == 2;
-
     return Scaffold(
       appBar: AppBar(
         title: Text(project.title),
         actions: [
-          if (!onCompare)
-            IconButton(
-              icon: const Icon(Icons.library_add_outlined),
-              tooltip: '예전 사진 채우기',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                    builder: (_) => BackfillScreen(project: project)),
-              ),
+          IconButton(
+            icon: const Icon(Icons.library_add_outlined),
+            tooltip: '예전 사진 채우기',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                  builder: (_) => BackfillScreen(project: project)),
             ),
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: '앨범 설정',
@@ -73,30 +67,26 @@ class _ProjectShellState extends ConsumerState<ProjectShell>
         bottom: TabBar(
           controller: _tab,
           tabs: const [
-            Tab(text: '홈'),
-            Tab(text: '타임라인'),
-            Tab(text: '돌아보기'),
+            Tab(icon: Icon(Icons.photo_library_outlined), text: '앨범'),
+            Tab(icon: Icon(Icons.auto_awesome_motion_outlined), text: '추억'),
           ],
         ),
       ),
-      // 비교 화면은 좌우 드래그(스크러버)를 쓰므로 탭 스와이프와 충돌 방지 위해
-      // 스와이프 전환을 끄고 탭 탭으로만 이동.
+      // 비교(추억) 화면은 좌우 드래그를 쓰므로 탭 스와이프 비활성.
       body: TabBarView(
         controller: _tab,
         physics: const NeverScrollableScrollPhysics(),
         children: [
           HomeTab(project: project),
-          AlbumTab(project: project),
           CompareView(project: project),
         ],
       ),
-      floatingActionButton: !showFab
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () => _openCapture(project),
-              icon: const Icon(Icons.camera_alt_rounded),
-              label: const Text('촬영'),
-            ),
+      // 1차 액션(촬영)은 어느 탭에서도 항상 보이게.
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _openCapture(project),
+        icon: const Icon(Icons.camera_alt_rounded),
+        label: const Text('촬영'),
+      ),
     );
   }
 

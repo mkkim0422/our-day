@@ -27,8 +27,12 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
   late final TextEditingController _caption =
       TextEditingController(text: _defaultCaption());
 
-  SkinCategory _category = SkinCategory.minimal;
-  late Skin _skin = skinsForCategory(_category).first;
+  /// 마지막으로 쓴 스킨 id(세션 동안 기억 — 다시 열 때 그 스킨으로 시작).
+  static String? _lastSkinId;
+
+  late Skin _skin = kSkins.firstWhere((s) => s.id == _lastSkinId,
+      orElse: () => kSkins.first);
+  late SkinCategory _category = _skin.category;
   bool _showDate = true;
   bool _showAge = true;
   bool _showHeight = true;
@@ -277,43 +281,27 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
 
   Widget _skinThumb(Skin skin, ColorScheme scheme) {
     final selected = skin.id == _skin.id;
-    final isDark = skin.bg.first.computeLuminance() < 0.35;
     return GestureDetector(
-      onTap: () => setState(() => _skin = skin),
+      onTap: () {
+        setState(() => _skin = skin);
+        _lastSkinId = skin.id; // 다음에 열 때 기억.
+      },
       child: SizedBox(
         width: 64,
         child: Column(
           children: [
             Container(
               width: 64,
-              height: 64,
+              height: 78,
               decoration: BoxDecoration(
-                color: skin.bg.length == 1 ? skin.bg.first : null,
-                gradient: skin.bg.length > 1
-                    ? LinearGradient(colors: skin.bg)
-                    : null,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(13),
                 border: Border.all(
                   color: selected ? scheme.primary : scheme.outlineVariant,
                   width: selected ? 2.5 : 1,
                 ),
               ),
-              child: Center(
-                child: Container(
-                  width: 34,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white24 : Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(
-                        color: skin.accent.withValues(alpha: 0.6)),
-                  ),
-                  child: Center(
-                    child: Icon(Icons.favorite,
-                        size: 14, color: skin.accent),
-                  ),
-                ),
-              ),
+              // 실제 내 사진 + 스킨 룩(필터·배경·모티프) 미니 미리보기.
+              child: SkinThumb(skin: skin, capture: widget.capture),
             ),
             const SizedBox(height: 4),
             Text(skin.name,
