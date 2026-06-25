@@ -100,6 +100,15 @@ class AppSettingsController extends AsyncNotifier<AppSettingsData> {
     state = AsyncData(next);
   }
 
+  /// 촬영 오버레이 코치(반투명 겹침 설명) 확인 완료 표시.
+  Future<void> markCaptureCoachSeen() async {
+    final current = state.value ?? const AppSettingsData();
+    if (current.captureCoachSeen) return;
+    final next = current.copyWith(captureCoachSeen: true);
+    await _store?.save(next);
+    state = AsyncData(next);
+  }
+
   /// 촬영별 키(cm) 기록 설정/해제(아이디어8 — 성장 차트).
   Future<void> setCaptureHeight(String captureId, double? cm) async {
     final current = state.value ?? const AppSettingsData();

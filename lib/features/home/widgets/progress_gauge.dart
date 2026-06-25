@@ -40,11 +40,19 @@ class ProgressGauge extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text('${captures.length}',
-                  style: text.headlineMedium
-                      ?.copyWith(color: scheme.primary, fontWeight: FontWeight.w700)),
-              const SizedBox(width: 4),
-              Text('컷 누적', style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+              if (captures.isEmpty)
+                Text('첫 기록을 기다려요',
+                    style: text.titleMedium?.copyWith(
+                        color: scheme.primary, fontWeight: FontWeight.w700))
+              else ...[
+                Text('${captures.length}',
+                    style: text.headlineMedium?.copyWith(
+                        color: scheme.primary, fontWeight: FontWeight.w700)),
+                const SizedBox(width: 2),
+                Text('번째 기록',
+                    style: text.bodyMedium
+                        ?.copyWith(color: scheme.onSurfaceVariant)),
+              ],
               const Spacer(),
               if (captures.length >= 4)
                 Text('타임랩스 준비됨', style: text.labelMedium?.copyWith(color: scheme.primary)),

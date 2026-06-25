@@ -25,7 +25,7 @@ class _IntroScreenState extends State<IntroScreen>
     super.initState();
     _c = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1600),
+      duration: const Duration(milliseconds: 2100),
     )..forward();
     _c.addStatusListener((s) {
       if (s == AnimationStatus.completed) _go();

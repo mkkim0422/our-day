@@ -75,7 +75,7 @@ class _ProjectShellState extends ConsumerState<ProjectShell>
           tabs: const [
             Tab(text: '홈'),
             Tab(text: '타임라인'),
-            Tab(text: '비교'),
+            Tab(text: '돌아보기'),
           ],
         ),
       ),

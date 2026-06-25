@@ -153,7 +153,7 @@ class _HeroProjectCard extends ConsumerWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        count == 0 ? '아직 사진이 없어요 · 첫 컷을 남겨요' : '$count컷',
+                        count == 0 ? '첫 기록을 기다려요' : '$count컷',
                         style: text.bodySmall?.copyWith(
                             color: Colors.white.withValues(alpha: 0.92)),
                       ),
@@ -206,7 +206,7 @@ class _ProjectGridCard extends ConsumerWidget {
               style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             Text(
-              count == 0 ? '0컷 · 첫 컷을 남겨요' : '$count컷',
+              count == 0 ? '첫 기록을 기다려요' : '$count컷',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),

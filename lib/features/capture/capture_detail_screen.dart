@@ -8,6 +8,7 @@ import '../../data/db/app_database.dart';
 import '../../data/repositories/providers.dart';
 import '../../services/providers.dart';
 import '../compare/compare_screen.dart';
+import '../decorate/decorate_screen.dart';
 import '../home/home_providers.dart';
 
 /// 사진 상세 — 썸네일 탭 시 진입. **전체 사진**(잘리지 않게 contain) + 아래 정보,
@@ -79,6 +80,16 @@ class _CaptureDetailScreenState extends ConsumerState<CaptureDetailScreen> {
             foregroundColor: Colors.white,
             title: Text('${current.periodLabel}  ·  ${_index + 1}/${captures.length}'),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.auto_awesome_outlined),
+                tooltip: '꾸미기',
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => DecorateScreen(
+                        project: widget.project, capture: current),
+                  ),
+                ),
+              ),
               IconButton(
                 icon: const Icon(Icons.ios_share),
                 tooltip: '공유',

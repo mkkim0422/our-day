@@ -13,6 +13,7 @@ class AppSettingsData {
     this.captureHeights = const {},
     this.sampleSeeded = false,
     this.showcaseSeen = false,
+    this.captureCoachSeen = false,
   });
 
   final bool locationRecallEnabled;
@@ -30,6 +31,9 @@ class AppSettingsData {
   /// 첫 실행 샘플 타임랩스 쇼케이스를 이미 봤는지.
   final bool showcaseSeen;
 
+  /// 촬영 화면의 오버레이(반투명 겹침) 설명 코치를 이미 봤는지.
+  final bool captureCoachSeen;
+
   AppSettingsData copyWith({
     bool? locationRecallEnabled,
     Map<String, DateTime>? placeLastNotified,
@@ -37,6 +41,7 @@ class AppSettingsData {
     Map<String, double>? captureHeights,
     bool? sampleSeeded,
     bool? showcaseSeen,
+    bool? captureCoachSeen,
   }) =>
       AppSettingsData(
         locationRecallEnabled:
@@ -46,6 +51,7 @@ class AppSettingsData {
         captureHeights: captureHeights ?? this.captureHeights,
         sampleSeeded: sampleSeeded ?? this.sampleSeeded,
         showcaseSeen: showcaseSeen ?? this.showcaseSeen,
+        captureCoachSeen: captureCoachSeen ?? this.captureCoachSeen,
       );
 
   Map<String, dynamic> toJson() => {
@@ -57,6 +63,7 @@ class AppSettingsData {
         'captureHeights': captureHeights,
         'sampleSeeded': sampleSeeded,
         'showcaseSeen': showcaseSeen,
+        'captureCoachSeen': captureCoachSeen,
       };
 
   factory AppSettingsData.fromJson(Map<String, dynamic> json) {
@@ -84,6 +91,7 @@ class AppSettingsData {
       captureHeights: heights,
       sampleSeeded: json['sampleSeeded'] as bool? ?? false,
       showcaseSeen: json['showcaseSeen'] as bool? ?? false,
+      captureCoachSeen: json['captureCoachSeen'] as bool? ?? false,
     );
   }
 }

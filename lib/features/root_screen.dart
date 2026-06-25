@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../branding/app_logo.dart';
 import '../core/theme/app_theme.dart';
+import '../data/db/app_database.dart';
 import '../data/repositories/providers.dart';
 import '../services/location/place_recall.dart';
 import '../services/notifications/notification_service.dart';
@@ -12,6 +13,7 @@ import 'capture/capture_screen.dart';
 import 'compare/compare_screen.dart';
 import 'home/album_hub_screen.dart';
 import 'home/home_providers.dart';
+import 'home/project_shell.dart';
 import 'intro/sample_showcase_screen.dart';
 import 'onboarding/new_project_screen.dart';
 
@@ -212,12 +214,25 @@ class _RootScreenState extends ConsumerState<RootScreen>
   }
 }
 
-/// 첫 실행 환영 화면 — 30초 내 첫 프로젝트 생성 유도(3장).
-class _WelcomeScreen extends StatelessWidget {
+/// 첫 실행 환영 화면 — 30초 내 첫 기록 생성 유도(3장).
+class _WelcomeScreen extends ConsumerWidget {
   const _WelcomeScreen();
 
+  /// 첫 기록 생성 → 곧바로 **그 기록 안(ProjectShell)으로 진입**(허브로 떨구지 않음).
+  /// 뒤로가기 시 허브(RootScreen이 이미 허브로 재빌드됨)로 자연스럽게 복귀.
+  Future<void> _start(BuildContext context, WidgetRef ref) async {
+    final created = await Navigator.of(context).push<Project>(
+      MaterialPageRoute(builder: (_) => const NewProjectScreen()),
+    );
+    if (created == null || !context.mounted) return;
+    ref.read(selectedProjectIdProvider.notifier).select(created.id);
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ProjectShell(project: created)),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     return Scaffold(
@@ -255,9 +270,7 @@ class _WelcomeScreen extends StatelessWidget {
               const Spacer(),
               FilledButton(
                 style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const NewProjectScreen()),
-                ),
+                onPressed: () => _start(context, ref),
                 child: const Text('시작하기'),
               ),
               const SizedBox(height: 12),

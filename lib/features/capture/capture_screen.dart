@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../data/db/app_database.dart';
 import '../../services/camera/camera_service.dart';
+import '../../services/providers.dart';
 import 'alignment_adjuster_screen.dart';
 import 'widgets/guide_grid.dart';
 
@@ -242,9 +243,19 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
         if (_countdown != null) _countdownOverlay(),
         _topBar(),
         _bottomControls(),
+        // 오버레이(반투명 겹침)가 처음 뜨는 순간 1회성 코치 — 오류 오해 방지.
+        if (_hasReference && _camera.isReady && _countdown == null && !_coachSeen)
+          _OverlayCoach(
+            onDismiss: () =>
+                ref.read(appSettingsProvider.notifier).markCaptureCoachSeen(),
+          ),
       ],
     );
   }
+
+  /// 설정 로딩 중(null)엔 깜빡임 방지를 위해 '봤음'으로 간주(표시 안 함).
+  bool get _coachSeen =>
+      ref.watch(appSettingsProvider).value?.captureCoachSeen ?? true;
 
   /// 카운트다운 오버레이 — 큰 숫자 + "탭하면 취소". 숫자 영역 탭으로 취소 가능
   /// (상단 닫기/하단 컨트롤은 위에 렌더되어 그대로 동작).
@@ -479,4 +490,220 @@ class _ShutterButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 오버레이(반투명 겹침) 첫 등장 시 1회성 코치 — "오류 아님"을 시각적으로 설명.
+///
+/// 딤 스크림 위에 부드럽게 떠오르는 카드 + 겹친 인물 데모로 기능을 직관적으로 전달.
+class _OverlayCoach extends StatefulWidget {
+  const _OverlayCoach({required this.onDismiss});
+  final VoidCallback onDismiss;
+
+  @override
+  State<_OverlayCoach> createState() => _OverlayCoachState();
+}
+
+class _OverlayCoachState extends State<_OverlayCoach>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 440))
+    ..forward();
+  late final Animation<double> _fade =
+      CurvedAnimation(parent: _c, curve: Curves.easeOut);
+  late final Animation<Offset> _slide = Tween<Offset>(
+    begin: const Offset(0, 0.06),
+    end: Offset.zero,
+  ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return Positioned.fill(
+      child: FadeTransition(
+        opacity: _fade,
+        child: Stack(
+          children: [
+            // 딤 스크림 — 탭하면 닫힘.
+            GestureDetector(
+              onTap: widget.onDismiss,
+              child: Container(color: Colors.black.withValues(alpha: 0.66)),
+            ),
+            Center(
+              child: SlideTransition(
+                position: _slide,
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 28),
+                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+                  decoration: BoxDecoration(
+                    color: scheme.surface,
+                    borderRadius: BorderRadius.circular(26),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        blurRadius: 30,
+                        offset: const Offset(0, 12),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _GhostDemo(scheme: scheme, text: text),
+                      const SizedBox(height: 20),
+                      Text('같은 포즈로 겹쳐 찍어요',
+                          style: text.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              color: scheme.onSurface)),
+                      const SizedBox(height: 10),
+                      Text(
+                        '직전 사진이 반투명으로 비쳐 보여요.\n그 위에 같은 포즈를 맞추면, 시간이 흘러도\n자연스럽게 이어지는 타임랩스가 완성돼요.',
+                        textAlign: TextAlign.center,
+                        style: text.bodyMedium?.copyWith(
+                            color: scheme.onSurfaceVariant, height: 1.45),
+                      ),
+                      const SizedBox(height: 14),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: scheme.primaryContainer.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.tune_rounded,
+                                size: 16, color: scheme.primary),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text('아래 슬라이더로 투명도를 조절할 수 있어요',
+                                  style: text.labelMedium?.copyWith(
+                                      color: scheme.primary,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(50),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14)),
+                        ),
+                        onPressed: widget.onDismiss,
+                        child: const Text('좋아요, 찍어볼게요'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 코치 카드의 핵심 비주얼 — 뷰파인더 안에 '이전 컷(반투명)'과 '지금'이 겹친 모습.
+class _GhostDemo extends StatelessWidget {
+  const _GhostDemo({required this.scheme, required this.text});
+  final ColorScheme scheme;
+  final TextTheme text;
+
+  @override
+  Widget build(BuildContext context) {
+    return AspectRatio(
+      aspectRatio: 16 / 10,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                scheme.primaryContainer.withValues(alpha: 0.6),
+                scheme.surfaceContainerHighest,
+              ],
+            ),
+          ),
+          child: Stack(
+            children: [
+              // 가이드 그리드(3분할) — 같은 구도 맞춤을 암시.
+              Positioned.fill(
+                child: CustomPaint(painter: _GridPainter(scheme.outlineVariant)),
+              ),
+              // 겹친 인물: 이전(반투명·살짝 왼쪽) + 지금(또렷).
+              Center(
+                child: SizedBox(
+                  height: 124,
+                  width: 170,
+                  child: Stack(
+                    alignment: Alignment.bottomCenter,
+                    children: [
+                      Transform.translate(
+                        offset: const Offset(-18, 0),
+                        child: Icon(Icons.person,
+                            size: 108,
+                            color: scheme.primary.withValues(alpha: 0.26)),
+                      ),
+                      Icon(Icons.person, size: 108, color: scheme.primary),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(left: 10, top: 10, child: _tag('이전 컷 · 반투명', faint: true)),
+              Positioned(right: 10, top: 10, child: _tag('지금', faint: false)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tag(String label, {required bool faint}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: faint ? scheme.surface.withValues(alpha: 0.78) : scheme.primary,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(label,
+          style: text.labelSmall?.copyWith(
+            color: faint ? scheme.onSurfaceVariant : scheme.onPrimary,
+            fontWeight: FontWeight.w700,
+            fontSize: 10,
+          )),
+    );
+  }
+}
+
+class _GridPainter extends CustomPainter {
+  _GridPainter(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color.withValues(alpha: 0.55)
+      ..strokeWidth = 1;
+    for (var i = 1; i < 3; i++) {
+      final dx = size.width * i / 3;
+      canvas.drawLine(Offset(dx, 0), Offset(dx, size.height), p);
+      final dy = size.height * i / 3;
+      canvas.drawLine(Offset(0, dy), Offset(size.width, dy), p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GridPainter old) => old.color != color;
 }
