@@ -92,6 +92,14 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  assets:
+    - assets/sample/
+
+  fonts:
+    - family: NanumPen
+      fonts:
+        - asset: assets/fonts/NanumPenScript-Regular.ttf
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

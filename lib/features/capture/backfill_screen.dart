@@ -113,9 +113,13 @@ class _BackfillScreenState extends ConsumerState<BackfillScreen> {
       // 사진이 쌓이면 회상 알림 대상이 늘어나므로 한 번 재예약(작업 #5 패턴).
       if (added > 0) {
         final all = await captures.listByProject(widget.project.id);
+        final birthday = ref
+            .read(appSettingsProvider)
+            .value
+            ?.projectBirthdays[widget.project.id];
         await ref
             .read(notificationServiceProvider)
-            .scheduleForProject(widget.project, all);
+            .scheduleForProject(widget.project, all, birthday: birthday);
       }
     } finally {
       if (mounted) setState(() => _saving = false);

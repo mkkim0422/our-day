@@ -6,6 +6,7 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../../core/constants/enums.dart';
+import '../../core/utils/event_peg_dates.dart';
 import '../../core/utils/reminder_time.dart';
 import '../../data/db/app_database.dart';
 
@@ -127,12 +128,17 @@ class NotificationService {
     Project project,
     List<Capture> captures, {
     DateTime? now,
+    DateTime? birthday,
   }) async {
     if (!_ready) return;
     final from = now ?? DateTime.now();
     await cancelForProject(project.id);
 
-    // ① 주기/이벤트 페그 알림.
+    // 푸시 옵트아웃: 사용자가 이 기록의 알림을 끈 경우(scheduleConfig.push == false)
+    // 기존 예약만 지우고 새로 걸지 않는다.
+    if (project.scheduleConfig['push'] == false) return;
+
+    // ① 주기 알림.
     final due = ReminderTime.nextPeriodReminder(
         project.scheduleType, project.scheduleConfig, from);
     if (due != null) {
@@ -181,6 +187,66 @@ class NotificationService {
         payload: NotificationPayload(projectId: project.id, recap: true),
       );
     }
+
+    // ④ 이벤트 페그 알림(생일·명절·계절) — 각 페그의 다음 발생일 아침 10시.
+    await _scheduleEventPegs(project, from, birthday);
+  }
+
+  /// 선택된 이벤트 페그별 다음 알림을 예약한다(다중 선택 가능).
+  /// - 생일: 선택한 생일 월·일.  - 명절: 다음 설날/추석.  - 계절: 다음 계절 첫날.
+  Future<void> _scheduleEventPegs(
+    Project project,
+    DateTime from,
+    DateTime? birthday,
+  ) async {
+    final pegs = _pegsOf(project);
+
+    if (pegs.contains(EventPeg.birthday) && birthday != null) {
+      await _zonedSchedule(
+        id: _birthdayPegId(project.id),
+        title: '오늘은 우리 기념일 🎂',
+        body: '«${project.title}» 생일이에요. 같은 포즈로 한 컷 남겨볼까요?',
+        when: EventPegDates.nextBirthday(birthday, from),
+        payload: NotificationPayload(projectId: project.id),
+      );
+    }
+
+    if (pegs.contains(EventPeg.holiday)) {
+      final when = EventPegDates.nextHoliday(from);
+      if (when != null) {
+        await _zonedSchedule(
+          id: _holidayPegId(project.id),
+          title: '명절, 가족이 모인 날 🏡',
+          body: '온 가족이 모인 오늘, «${project.title}» 한 컷 어때요?',
+          when: when,
+          payload: NotificationPayload(projectId: project.id),
+        );
+      }
+    }
+
+    if (pegs.contains(EventPeg.season)) {
+      await _zonedSchedule(
+        id: _seasonPegId(project.id),
+        title: '계절이 바뀌었어요 🍃',
+        body: '새 계절의 첫날, «${project.title}» 한 컷으로 변화를 남겨요.',
+        when: EventPegDates.nextSeasonStart(from),
+        payload: NotificationPayload(projectId: project.id),
+      );
+    }
+  }
+
+  /// 프로젝트의 이벤트 페그 집합(단일 컬럼 + scheduleConfig.eventPegs 다중 보관).
+  Set<EventPeg> _pegsOf(Project project) {
+    final set = <EventPeg>{};
+    if (project.eventPeg != EventPeg.none) set.add(project.eventPeg);
+    final raw = project.scheduleConfig['eventPegs'];
+    if (raw is List) {
+      for (final n in raw) {
+        final match = EventPeg.values.where((e) => e.name == '$n');
+        if (match.isNotEmpty) set.add(match.first);
+      }
+    }
+    return set;
   }
 
   /// 위치 기반 회상 알림을 **즉시** 표시 (5장).
@@ -219,6 +285,9 @@ class NotificationService {
     if (!_ready) return;
     await _plugin.cancel(id: _periodId(projectId));
     await _plugin.cancel(id: _recapId(projectId));
+    await _plugin.cancel(id: _birthdayPegId(projectId));
+    await _plugin.cancel(id: _holidayPegId(projectId));
+    await _plugin.cancel(id: _seasonPegId(projectId));
     for (var i = 0; i < _maxNostalgia; i++) {
       await _plugin.cancel(id: _nostalgiaId(projectId, i));
     }
@@ -277,4 +346,11 @@ class NotificationService {
   // 연말 리캡 ID — 또 다른 별도 범위.
   int _recapId(String projectId) =>
       30000000 + (projectId.hashCode & 0x7fffffff) % 1000000;
+  // 이벤트 페그 ID — 페그별 별도 범위(생일/명절/계절).
+  int _birthdayPegId(String projectId) =>
+      40000000 + (projectId.hashCode & 0x7fffffff) % 1000000;
+  int _holidayPegId(String projectId) =>
+      50000000 + (projectId.hashCode & 0x7fffffff) % 1000000;
+  int _seasonPegId(String projectId) =>
+      60000000 + (projectId.hashCode & 0x7fffffff) % 1000000;
 }

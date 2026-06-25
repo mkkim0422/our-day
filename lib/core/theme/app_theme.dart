@@ -1,23 +1,24 @@
 import 'package:flutter/material.dart';
 
-/// 앱 전역 테마 — **토스풍**(깔끔한 블루·화이트·넉넉한 여백·또렷한 1차 액션).
+/// 앱 전역 테마 — **따뜻한 연핑크 감성**(크림빛 배경·로즈 포인트·부드러운 여백).
 ///
-/// 8장 원칙(iOS에서도 자연스러운 중립적 디자인) 유지: 흰 배경 + 토스 블루 포인트,
-/// 굵은 한글 타이포, 둥근 카드/버튼, 색은 최소로.
+/// 8장 원칙(iOS에서도 자연스러운 디자인) 유지: 차갑지 않은 크림 화이트 배경 +
+/// 따뜻한 로즈핑크 포인트, 굵은 한글 타이포, 둥근 카드/버튼, 색은 절제해서.
 class AppTheme {
   AppTheme._();
 
-  // 토스 팔레트.
-  static const Color _blue = Color(0xFF3182F6); // Toss Blue
-  static const Color _ink = Color(0xFF191F28); // 본문 텍스트(거의 검정)
-  static const Color _sub = Color(0xFF8B95A1); // 보조 텍스트(회색)
-  static const Color _line = Color(0xFFE5E8EB); // 구분선/테두리
-  static const Color _fill = Color(0xFFF2F4F6); // 옅은 회색 면(카드)
+  // 따뜻한 파스텔(연핑크·라일락·크림) 팔레트 — 부드럽고 몽환적인 분위기.
+  static const Color _rose = Color(0xFFD86A92); // 메인 포인트(부드러운 로즈, 버튼·아이콘)
+  static const Color _ink = Color(0xFF4A3A44); // 본문 텍스트(웜 플럼브라운)
+  static const Color _sub = Color(0xFF9B8A95); // 보조 텍스트(웜 모브그레이)
+  static const Color _line = Color(0xFFEDE3EC); // 구분선/테두리(연 라일락)
+  static const Color _fill = Color(0xFFF6EEF5); // 옅은 핑크-라일락 면(카드)
+  static const Color _cream = Color(0xFFF8F2F7); // 웜 라일락-크림 배경(화면)
 
-  /// 브랜드 그라데이션(아이콘·인트로·CTA) — 거의 평면에 가까운 블루.
+  /// 브랜드 그라데이션(아이콘·인트로·CTA) — 연핑크 → 라일락 파스텔.
   static const List<Color> brandGradient = [
-    Color(0xFF4593FC),
-    Color(0xFF3182F6),
+    Color(0xFFF2ADC8),
+    Color(0xFFC4A2E0),
   ];
 
   static ThemeData light() => _build(Brightness.light);
@@ -26,20 +27,20 @@ class AppTheme {
   static ThemeData _build(Brightness brightness) {
     final isLight = brightness == Brightness.light;
     var scheme = ColorScheme.fromSeed(
-      seedColor: _blue,
+      seedColor: _rose,
       brightness: brightness,
     );
     if (isLight) {
       scheme = scheme.copyWith(
-        primary: _blue,
+        primary: _rose,
         onPrimary: Colors.white,
-        surface: Colors.white,
+        surface: _cream,
         onSurface: _ink,
         onSurfaceVariant: _sub,
         outlineVariant: _line,
         surfaceContainerHighest: _fill,
-        primaryContainer: const Color(0xFFE8F1FE), // 옅은 블루(완료/강조 면)
-        onPrimaryContainer: _blue,
+        primaryContainer: const Color(0xFFF7DCEA), // 옅은 핑크(완료/강조 면)
+        onPrimaryContainer: const Color(0xFFA84E70), // 진한 로즈(위 글자색)
       );
     }
     final bg = scheme.surface;
@@ -60,7 +61,7 @@ class AppTheme {
           fontWeight: FontWeight.w700,
         ),
       ),
-      // 토스 스타일 1차 버튼: 블루, 둥근 14, 큼직·굵게.
+      // 1차 버튼: 로즈, 둥근 14, 큼직·굵게.
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           minimumSize: const Size.fromHeight(52),

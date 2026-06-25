@@ -44,10 +44,7 @@ class HomeTab extends ConsumerWidget {
         ProgressGauge(project: project, captures: captures, now: now),
         const SizedBox(height: 24),
         if (captures.isEmpty)
-          _EmptyTimeline(
-            onTap: () => _openCapture(context, ref, null),
-            onBackfill: () => _openBackfill(context),
-          )
+          _EmptyTimeline(onBackfill: () => _openBackfill(context))
         else ...[
           Row(
             children: [
@@ -108,9 +105,9 @@ class _CtaCard extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final radius = BorderRadius.circular(22);
 
-    final fg = done ? scheme.onSurface : Colors.white;
-    final subFg =
-        done ? scheme.onSurfaceVariant : Colors.white.withValues(alpha: 0.92);
+    // 그라데이션이 파스텔이라 양쪽 상태 모두 진한 플럼 텍스트로 가독성 확보.
+    final fg = scheme.onSurface;
+    final subFg = scheme.onSurfaceVariant;
 
     final decoration = done
         ? BoxDecoration(
@@ -149,14 +146,12 @@ class _CtaCard extends StatelessWidget {
                   height: 52,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: done
-                        ? scheme.primary.withValues(alpha: 0.15)
-                        : Colors.white.withValues(alpha: 0.22),
+                    color: Colors.white.withValues(alpha: 0.55),
                   ),
                   child: Icon(
                     done ? Icons.check_rounded : Icons.camera_alt_rounded,
                     size: 28,
-                    color: done ? scheme.primary : Colors.white,
+                    color: scheme.primary,
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -165,14 +160,14 @@ class _CtaCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        done ? '이번 기간 촬영 완료' : '이번 기간 한 컷 찍기',
+                        done ? '이번 기간 기록 완료' : '이번 기간 한 컷 찍기',
                         style: text.titleMedium
                             ?.copyWith(fontWeight: FontWeight.w800, color: fg),
                       ),
                       const SizedBox(height: 3),
                       Text(
                         done
-                            ? '다시 찍어 더 좋은 컷으로 바꿀 수 있어요'
+                            ? '한 컷 더 남기고 싶으면 눌러요'
                             : '같은 포즈로 그날의 우리를 남겨요',
                         style: text.bodySmall?.copyWith(color: subFg),
                       ),
@@ -189,16 +184,17 @@ class _CtaCard extends StatelessWidget {
   }
 }
 
+/// 빈 타임라인 안내 — 촬영은 위의 CTA 카드가 단일 기본 액션이므로 여기선
+/// 설명 + '예전 사진 채우기'(별개 동작)만 둔다(버튼 중복 제거).
 class _EmptyTimeline extends StatelessWidget {
-  const _EmptyTimeline({required this.onTap, required this.onBackfill});
-  final VoidCallback onTap;
+  const _EmptyTimeline({required this.onBackfill});
   final VoidCallback onBackfill;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: scheme.outlineVariant),
@@ -206,25 +202,19 @@ class _EmptyTimeline extends StatelessWidget {
       child: Column(
         children: [
           Icon(Icons.photo_camera_back_outlined,
-              size: 48, color: scheme.onSurfaceVariant),
+              size: 44, color: scheme.onSurfaceVariant),
           const SizedBox(height: 12),
           Text('아직 사진이 없어요', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 4),
           Text(
-            '첫 사진을 찍으면 여기에 그날의 우리가 쌓입니다.',
+            '위에서 첫 컷을 찍으면 여기에 그날의 우리가 쌓입니다.',
             textAlign: TextAlign.center,
             style: Theme.of(context)
                 .textTheme
                 .bodySmall
                 ?.copyWith(color: scheme.onSurfaceVariant),
           ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: onTap,
-            icon: const Icon(Icons.camera_alt),
-            label: const Text('첫 사진 찍기'),
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           TextButton.icon(
             onPressed: onBackfill,
             icon: const Icon(Icons.library_add_outlined),

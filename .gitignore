@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# 로컬 작업용 백업/참고 이미지(앱 빌드 불필요)
+/etc/

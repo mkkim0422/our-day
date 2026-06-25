@@ -33,7 +33,7 @@ void main() {
       title: '우리 가족',
       scheduleType: ScheduleType.monthly,
       scheduleConfig: {'day': 1},
-      eventPeg: EventPeg.birthday,
+      eventPegs: {EventPeg.birthday},
     );
     final place = await PlaceRepository(db).create(
       projectId: project.id,

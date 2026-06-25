@@ -10,8 +10,9 @@ import '../../services/providers.dart';
 import '../compare/compare_screen.dart';
 import '../home/home_providers.dart';
 
-/// 사진 상세 — 썸네일 탭 시 진입. **전체 사진**(잘리지 않게 contain) + 핀치 줌,
+/// 사진 상세 — 썸네일 탭 시 진입. **전체 사진**(잘리지 않게 contain) + 아래 정보,
 /// 좌우 **스와이프로 다른 기록 넘기기**(PageView). 각 사진마다 메모·키·나이·구성원.
+/// 사진을 **한 번 더 탭하면** 정보 없는 전체화면 갤러리([_FullscreenGallery]).
 class CaptureDetailScreen extends ConsumerStatefulWidget {
   const CaptureDetailScreen({
     super.key,
@@ -104,10 +105,22 @@ class _CaptureDetailScreenState extends ConsumerState<CaptureDetailScreen> {
             itemBuilder: (_, i) => _CapturePage(
               project: widget.project,
               capture: captures[i],
+              onOpenFullscreen: () => _openFullscreen(captures, i),
             ),
           ),
         );
       },
+    );
+  }
+
+  /// 사진을 한 번 더 탭 → 정보 없는 전체화면 갤러리(좌우 스와이프로 넘김).
+  Future<void> _openFullscreen(List<Capture> captures, int index) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) =>
+            _FullscreenGallery(captures: captures, initialIndex: index),
+      ),
     );
   }
 
@@ -143,19 +156,26 @@ class _CaptureDetailScreenState extends ConsumerState<CaptureDetailScreen> {
     await captureRepo.delete(capture.id);
 
     final remaining = await captureRepo.listByProject(widget.project.id);
+    final birthday =
+        ref.read(appSettingsProvider).value?.projectBirthdays[widget.project.id];
     await ref
         .read(notificationServiceProvider)
-        .scheduleForProject(widget.project, remaining);
+        .scheduleForProject(widget.project, remaining, birthday: birthday);
     // 스트림(capturesProvider) 갱신으로 PageView가 자동 반영(빈 목록이면 닫힘).
   }
 }
 
 /// 한 장의 상세 페이지(전체 사진 + 정보). PageView의 각 페이지.
 class _CapturePage extends ConsumerStatefulWidget {
-  const _CapturePage({required this.project, required this.capture});
+  const _CapturePage({
+    required this.project,
+    required this.capture,
+    required this.onOpenFullscreen,
+  });
 
   final Project project;
   final Capture capture;
+  final VoidCallback onOpenFullscreen;
 
   @override
   ConsumerState<_CapturePage> createState() => _CapturePageState();
@@ -194,12 +214,9 @@ class _CapturePageState extends ConsumerState<_CapturePage> {
       children: [
         Expanded(
           child: file.existsSync()
-              // 전체 사진이 잘리지 않게 contain + 핀치 줌.
-              // panEnabled:false → 좌우 스와이프는 PageView가, 핀치 줌은 여기서.
-              ? InteractiveViewer(
-                  panEnabled: false,
-                  minScale: 1,
-                  maxScale: 5,
+              // 한 번 더 탭하면 전체화면 갤러리로.
+              ? GestureDetector(
+                  onTap: widget.onOpenFullscreen,
                   child: SizedBox.expand(
                     child: Image.file(file, fit: BoxFit.contain),
                   ),
@@ -414,4 +431,84 @@ class _CapturePageState extends ConsumerState<_CapturePage> {
   }
 
   String _formatDate(DateTime d) => '${d.year}년 ${d.month}월 ${d.day}일';
+}
+
+/// 전체화면 갤러리 — 정보/여백 없이 사진만. 좌우 스와이프로 넘기고, 핀치 줌,
+/// 아무 곳이나 탭하면 닫힘(일반 갤러리 전체보기와 동일한 감각).
+class _FullscreenGallery extends StatefulWidget {
+  const _FullscreenGallery({required this.captures, required this.initialIndex});
+
+  final List<Capture> captures;
+  final int initialIndex;
+
+  @override
+  State<_FullscreenGallery> createState() => _FullscreenGalleryState();
+}
+
+class _FullscreenGalleryState extends State<_FullscreenGallery> {
+  late final PageController _controller =
+      PageController(initialPage: widget.initialIndex);
+  late int _index = widget.initialIndex;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _controller,
+            itemCount: widget.captures.length,
+            onPageChanged: (i) => setState(() => _index = i),
+            itemBuilder: (_, i) {
+              final file = File(widget.captures[i].filePath);
+              return GestureDetector(
+                onTap: () => Navigator.of(context).maybePop(),
+                child: file.existsSync()
+                    ? InteractiveViewer(
+                        minScale: 1,
+                        maxScale: 5,
+                        child: SizedBox.expand(
+                          child: Image.file(file, fit: BoxFit.contain),
+                        ),
+                      )
+                    : const Center(
+                        child: Icon(Icons.broken_image_outlined,
+                            color: Colors.white54, size: 56),
+                      ),
+              );
+            },
+          ),
+          // 닫기 버튼 + 인덱스(상단 안전영역).
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.of(context).maybePop(),
+                  ),
+                  const Spacer(),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Text(
+                      '${_index + 1} / ${widget.captures.length}',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

@@ -11,6 +11,8 @@ class AppSettingsData {
     this.placeLastNotified = const {},
     this.projectBirthdays = const {},
     this.captureHeights = const {},
+    this.sampleSeeded = false,
+    this.showcaseSeen = false,
   });
 
   final bool locationRecallEnabled;
@@ -22,11 +24,19 @@ class AppSettingsData {
   /// 촬영별 키(cm) 기록(아이디어8 — 성장 차트). captureId → cm.
   final Map<String, double> captureHeights;
 
+  /// 온보딩 샘플 데이터를 이미 심었는지(중복 시드 방지).
+  final bool sampleSeeded;
+
+  /// 첫 실행 샘플 타임랩스 쇼케이스를 이미 봤는지.
+  final bool showcaseSeen;
+
   AppSettingsData copyWith({
     bool? locationRecallEnabled,
     Map<String, DateTime>? placeLastNotified,
     Map<String, DateTime>? projectBirthdays,
     Map<String, double>? captureHeights,
+    bool? sampleSeeded,
+    bool? showcaseSeen,
   }) =>
       AppSettingsData(
         locationRecallEnabled:
@@ -34,6 +44,8 @@ class AppSettingsData {
         placeLastNotified: placeLastNotified ?? this.placeLastNotified,
         projectBirthdays: projectBirthdays ?? this.projectBirthdays,
         captureHeights: captureHeights ?? this.captureHeights,
+        sampleSeeded: sampleSeeded ?? this.sampleSeeded,
+        showcaseSeen: showcaseSeen ?? this.showcaseSeen,
       );
 
   Map<String, dynamic> toJson() => {
@@ -43,6 +55,8 @@ class AppSettingsData {
         'projectBirthdays':
             projectBirthdays.map((k, v) => MapEntry(k, v.toIso8601String())),
         'captureHeights': captureHeights,
+        'sampleSeeded': sampleSeeded,
+        'showcaseSeen': showcaseSeen,
       };
 
   factory AppSettingsData.fromJson(Map<String, dynamic> json) {
@@ -68,6 +82,8 @@ class AppSettingsData {
       placeLastNotified: parseDates(json['placeLastNotified']),
       projectBirthdays: parseDates(json['projectBirthdays']),
       captureHeights: heights,
+      sampleSeeded: json['sampleSeeded'] as bool? ?? false,
+      showcaseSeen: json['showcaseSeen'] as bool? ?? false,
     );
   }
 }

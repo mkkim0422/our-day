@@ -7,7 +7,7 @@ class AppLogoMark extends StatelessWidget {
     super.key,
     this.size = 120,
     this.bodyColor = const Color(0xFFFFFFFF),
-    this.accentColor = const Color(0xFF1B64DA),
+    this.accentColor = const Color(0xFFB85178), // 따뜻한 딥 로즈(렌즈·하트)
   });
 
   final double size;

@@ -29,12 +29,14 @@ void main() {
       title: '우리 가족',
       scheduleType: ScheduleType.monthly,
       scheduleConfig: {'day': 1},
-      eventPeg: EventPeg.birthday,
+      eventPegs: {EventPeg.birthday, EventPeg.season},
     );
     expect(p.id, isNotEmpty);
     expect(p.title, '우리 가족');
     expect(p.scheduleConfig['day'], 1);
+    // 대표 페그는 단일 컬럼에, 전체는 scheduleConfig.eventPegs에 보관.
     expect(p.eventPeg, EventPeg.birthday);
+    expect(p.scheduleConfig['eventPegs'], ['birthday', 'season']);
   });
 
   test('Capture 저장 시 월간 period_label 자동 계산', () async {

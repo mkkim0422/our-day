@@ -18,6 +18,10 @@ class ReminderTime {
     switch (type) {
       case ScheduleType.manual:
         return null;
+      case ScheduleType.daily:
+        var c = DateTime(from.year, from.month, from.day, h, m);
+        if (!c.isAfter(from)) c = c.add(const Duration(days: 1));
+        return c;
       case ScheduleType.weekly:
         final weekday = (config['weekday'] as int?) ?? from.weekday;
         return _nextWeekday(from, weekday, h, m);

@@ -15,6 +15,8 @@ class SchedulePeriod {
     DateTime at,
   ) {
     switch (type) {
+      case ScheduleType.daily:
+        return '${at.year}-${_two(at.month)}-${_two(at.day)}';
       case ScheduleType.yearly:
         return '${at.year}';
       case ScheduleType.monthly:
@@ -38,6 +40,8 @@ class SchedulePeriod {
     DateTime at,
   ) {
     switch (type) {
+      case ScheduleType.daily:
+        return '${at.year}.${_two(at.month)}.${_two(at.day)}';
       case ScheduleType.yearly:
         return '${at.year}';
       case ScheduleType.monthly:

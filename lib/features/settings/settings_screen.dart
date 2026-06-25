@@ -39,7 +39,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       body: ListView(
         children: [
           if (widget.project != null) ...[
-            _sectionTitle('프로젝트'),
+            _sectionTitle('이 기록'),
             _birthdayTile(settingsAsync.value),
             ListTile(
               leading: const Icon(Icons.group_outlined),

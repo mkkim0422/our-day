@@ -23,20 +23,30 @@ class ProjectRepository {
   }
 
   /// 새 프로젝트 생성. id(uuid) 자동 발급.
+  ///
+  /// 이벤트 페그는 다중 선택 가능(생일·명절·계절 동시). 스키마 마이그레이션 없이
+  /// `scheduleConfig.eventPegs`(이름 리스트)에 전부 보관하고, 단일 `eventPeg`
+  /// 컬럼에는 대표(첫 번째)를 넣어 기존 알림/백업 로직과 호환한다.
   Future<Project> create({
     required String title,
     required ScheduleType scheduleType,
     Map<String, dynamic> scheduleConfig = const {},
-    EventPeg eventPeg = EventPeg.none,
+    Set<EventPeg> eventPegs = const {},
   }) async {
     final id = _uuid.v4();
+    final pegs = eventPegs.where((p) => p != EventPeg.none).toList();
+    final config = Map<String, dynamic>.from(scheduleConfig);
+    if (pegs.isNotEmpty) {
+      config['eventPegs'] = pegs.map((p) => p.name).toList();
+    }
+    final primary = pegs.isNotEmpty ? pegs.first : EventPeg.none;
     await _db.into(_db.projects).insert(
           ProjectsCompanion.insert(
             id: id,
             title: title,
             scheduleType: scheduleType,
-            scheduleConfig: Value(scheduleConfig),
-            eventPeg: Value(eventPeg),
+            scheduleConfig: Value(config),
+            eventPeg: Value(primary),
           ),
         );
     return (await getById(id))!;

@@ -7,10 +7,12 @@ import '../data/repositories/providers.dart';
 import '../services/location/place_recall.dart';
 import '../services/notifications/notification_service.dart';
 import '../services/providers.dart';
+import '../services/sample/sample_seeder.dart';
 import 'capture/capture_screen.dart';
 import 'compare/compare_screen.dart';
+import 'home/album_hub_screen.dart';
 import 'home/home_providers.dart';
-import 'home/main_shell.dart';
+import 'intro/sample_showcase_screen.dart';
 import 'onboarding/new_project_screen.dart';
 
 /// 앱 루트 게이트.
@@ -27,6 +29,8 @@ class RootScreen extends ConsumerStatefulWidget {
 
 class _RootScreenState extends ConsumerState<RootScreen>
     with WidgetsBindingObserver {
+  bool _seeding = false;
+
   @override
   void initState() {
     super.initState();
@@ -34,9 +38,38 @@ class _RootScreenState extends ConsumerState<RootScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // 콜드스타트 알림 탭은 RootScreen 구독 전에 set되어 build의 listen이 놓치므로,
       // 마운트 직후 현재 페이로드를 직접 한 번 소비한다.
+      _initFirstLaunch();
       _consumePendingNotification();
       _checkPlaceRecall();
     });
+  }
+
+  /// 첫 실행 처리 — 프로젝트가 없으면 온보딩 샘플(가족 5컷)을 심는다.
+  /// 이미 자기 기록이 있는 사용자는 샘플을 건너뛴다(쇼케이스도 생략).
+  Future<void> _initFirstLaunch() async {
+    try {
+      final settings = await ref.read(appSettingsProvider.future);
+      if (settings.sampleSeeded) return;
+
+      final projects = await ref.read(projectsProvider.future);
+      final notifier = ref.read(appSettingsProvider.notifier);
+      if (projects.isNotEmpty) {
+        await notifier.markSampleSeeded();
+        await notifier.markShowcaseSeen();
+        return;
+      }
+
+      if (mounted) setState(() => _seeding = true);
+      try {
+        await ref.read(sampleSeederProvider).seed();
+      } finally {
+        await notifier.markSampleSeeded();
+        if (mounted) setState(() => _seeding = false);
+      }
+    } catch (_) {
+      // 샘플 시드는 best-effort — 실패해도 앱 진입은 막지 않는다.
+      if (mounted) setState(() => _seeding = false);
+    }
   }
 
   Future<void> _consumePendingNotification() async {
@@ -115,21 +148,33 @@ class _RootScreenState extends ConsumerState<RootScreen>
     });
 
     final projectsAsync = ref.watch(projectsProvider);
+    final settings = ref.watch(appSettingsProvider).value;
+
+    if (_seeding) return _loading();
 
     return projectsAsync.when(
-      loading: () => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      ),
+      loading: _loading,
       error: (e, _) => Scaffold(
         body: Center(child: Text('시작 중 오류: $e')),
       ),
       data: (projects) {
+        // 첫 실행 처리(시드) 진행 중이면 깜빡임 방지 스피너.
+        if (settings == null || !settings.sampleSeeded) return _loading();
+        // 시드된 샘플 타임랩스 쇼케이스(최초 1회).
+        if (!settings.showcaseSeen && projects.isNotEmpty) {
+          return SampleShowcaseScreen(project: projects.first);
+        }
         if (projects.isEmpty) return const _WelcomeScreen();
-        // 프로젝트 선택/전환은 MainShell이 담당(하단 네비 + 프로젝트 칩).
-        return const MainShell();
+        // 프로젝트 선택/전환은 앨범 허브가 담당(갤러리식 카드 그리드).
+        // 카드 탭 → ProjectShell(홈/타임라인/비교 상단 탭)로 진입.
+        return const AlbumHubScreen();
       },
     );
   }
+
+  Widget _loading() => const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
 
   /// 알림 페이로드로 촬영 화면 진입. captureId가 있으면(회상 알림) 그 사진을
   /// 오버레이 기준으로, 없으면 가장 최근 사진을 기준으로 띄운다(4·5장).
@@ -203,7 +248,7 @@ class _WelcomeScreen extends StatelessWidget {
               Text('그날 우리', textAlign: TextAlign.center, style: text.headlineMedium),
               const SizedBox(height: 8),
               Text(
-                '같은 포즈로 매달 한 컷.\n시간이 쌓이면 가족의 변화가 보입니다.',
+                '같은 포즈로 매달 한 컷.\n차곡차곡, 우리만의 이야기가 쌓여요.',
                 textAlign: TextAlign.center,
                 style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
               ),

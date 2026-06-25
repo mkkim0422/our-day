@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../branding/app_logo.dart';
+import '../../core/theme/app_theme.dart';
 import '../root_screen.dart';
 
 /// 첫 진입 인트로(스플래시) — 브랜드 로고가 떠오르고 슬로건이 이어진 뒤 홈으로 전환.
@@ -24,7 +25,7 @@ class _IntroScreenState extends State<IntroScreen>
     super.initState();
     _c = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2600),
+      duration: const Duration(milliseconds: 1600),
     )..forward();
     _c.addStatusListener((s) {
       if (s == AnimationStatus.completed) _go();
@@ -76,7 +77,7 @@ class _IntroScreenState extends State<IntroScreen>
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Color(0xFF4593FC), Color(0xFF3182F6)],
+                    colors: AppTheme.brandGradient,
                   ),
                 ),
                 child: Column(
@@ -96,7 +97,7 @@ class _IntroScreenState extends State<IntroScreen>
                       child: const Text(
                         '그날 우리',
                         style: TextStyle(
-                          color: Color(0xFFFFF4EC),
+                          color: Color(0xFF4A3A44),
                           fontSize: 32,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 1,
@@ -109,7 +110,7 @@ class _IntroScreenState extends State<IntroScreen>
                       child: Text(
                         '매달 한 컷, 그날의 우리',
                         style: TextStyle(
-                          color: const Color(0xFFFFF4EC).withValues(alpha: 0.9),
+                          color: const Color(0xFF4A3A44).withValues(alpha: 0.75),
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
                         ),

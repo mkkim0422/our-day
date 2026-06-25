@@ -14,7 +14,7 @@ enum BackupTarget { googleDrive, icloud, none }
 enum BackupState { localOnly, backedUp, pending }
 
 /// 촬영 주기 유형(2장). 상세는 `schedule_config`(json)에서 처리.
-enum ScheduleType { weekly, biweekly, monthly, yearly, fixedDates, manual }
+enum ScheduleType { daily, weekly, biweekly, monthly, yearly, fixedDates, manual }
 
 /// 촬영을 묶을 이벤트(6장 리텐션 — 이벤트 페그 알림).
 enum EventPeg { none, birthday, holiday, season }

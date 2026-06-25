@@ -49,6 +49,8 @@ class BackfillDates {
 
   static DateTime _stepBack(ScheduleType type, DateTime d) {
     switch (type) {
+      case ScheduleType.daily:
+        return d.subtract(const Duration(days: 1));
       case ScheduleType.yearly:
         return DateTime(d.year - 1, d.month, d.day, 12);
       case ScheduleType.weekly:

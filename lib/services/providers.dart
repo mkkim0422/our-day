@@ -84,6 +84,22 @@ class AppSettingsController extends AsyncNotifier<AppSettingsData> {
     state = AsyncData(next);
   }
 
+  /// 온보딩 샘플 시드 완료 표시(중복 시드 방지).
+  Future<void> markSampleSeeded() async {
+    final current = state.value ?? const AppSettingsData();
+    final next = current.copyWith(sampleSeeded: true);
+    await _store?.save(next);
+    state = AsyncData(next);
+  }
+
+  /// 첫 실행 샘플 타임랩스 쇼케이스 확인 완료 표시.
+  Future<void> markShowcaseSeen() async {
+    final current = state.value ?? const AppSettingsData();
+    final next = current.copyWith(showcaseSeen: true);
+    await _store?.save(next);
+    state = AsyncData(next);
+  }
+
   /// 촬영별 키(cm) 기록 설정/해제(아이디어8 — 성장 차트).
   Future<void> setCaptureHeight(String captureId, double? cm) async {
     final current = state.value ?? const AppSettingsData();

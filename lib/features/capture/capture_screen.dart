@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
@@ -45,6 +46,12 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
   bool _showOverlay = true;
   bool _busy = false;
 
+  // 셀프 타이머: 0(끄기) → 3 → 5 → 10초 순환. 같은 포즈로 직접 들어가 찍을 때 유용.
+  static const _timerOptions = [0, 3, 5, 10];
+  int _timerSec = 0;
+  int? _countdown; // 카운트다운 중 남은 초(null이면 비활성)
+  Timer? _countdownTimer;
+
   String? get _referencePath => widget.referenceCapture?.filePath;
   bool get _hasReference => _referencePath != null;
 
@@ -86,6 +93,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
     if (_permissionDenied || _error != null) return;
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
+      _cancelCountdown(); // 화면 가려지면 카운트다운 중단.
       _camera.dispose();
       if (mounted) setState(() {}); // isReady=false → 프리뷰 숨김.
     } else if (state == AppLifecycleState.resumed && !_camera.isReady) {
@@ -97,11 +105,58 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _countdownTimer?.cancel();
     _camera.dispose();
     super.dispose();
   }
 
-  Future<void> _shutter() async {
+  /// 타이머 순환(0→3→5→10→0). 카운트다운 중엔 바꾸지 않는다.
+  void _cycleTimer() {
+    if (_countdown != null) return;
+    final next = (_timerOptions.indexOf(_timerSec) + 1) % _timerOptions.length;
+    setState(() => _timerSec = _timerOptions[next]);
+  }
+
+  /// 셔터 탭. 카운트다운 중이면 취소, 타이머가 켜져 있으면 카운트다운 시작,
+  /// 아니면 바로 촬영.
+  void _onShutterTap() {
+    if (_countdown != null) {
+      _cancelCountdown();
+      return;
+    }
+    if (_busy || !_camera.isReady) return;
+    if (_timerSec == 0) {
+      _capture();
+    } else {
+      _startCountdown();
+    }
+  }
+
+  void _startCountdown() {
+    setState(() => _countdown = _timerSec);
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      final next = (_countdown ?? 1) - 1;
+      if (next <= 0) {
+        t.cancel();
+        setState(() => _countdown = null);
+        _capture();
+      } else {
+        setState(() => _countdown = next);
+      }
+    });
+  }
+
+  void _cancelCountdown() {
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+    if (_countdown != null && mounted) setState(() => _countdown = null);
+  }
+
+  Future<void> _capture() async {
     if (_busy || !_camera.isReady) return;
     setState(() => _busy = true);
     try {
@@ -184,9 +239,41 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
             ),
           ),
         const GuideGrid(),
+        if (_countdown != null) _countdownOverlay(),
         _topBar(),
         _bottomControls(),
       ],
+    );
+  }
+
+  /// 카운트다운 오버레이 — 큰 숫자 + "탭하면 취소". 숫자 영역 탭으로 취소 가능
+  /// (상단 닫기/하단 컨트롤은 위에 렌더되어 그대로 동작).
+  Widget _countdownOverlay() {
+    return Positioned.fill(
+      child: GestureDetector(
+        onTap: _cancelCountdown,
+        child: Container(
+          color: Colors.black.withValues(alpha: 0.35),
+          alignment: Alignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$_countdown',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 104,
+                  fontWeight: FontWeight.bold,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('탭하면 취소',
+                  style: TextStyle(color: Colors.white70, fontSize: 14)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -295,13 +382,66 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
                   icon: const Icon(Icons.photo_library_outlined,
                       color: Colors.white),
                   tooltip: '갤러리에서 불러오기',
-                  onPressed: _busy ? null : _pickFromGallery,
+                  onPressed: (_busy || _countdown != null)
+                      ? null
+                      : _pickFromGallery,
                 ),
-                _ShutterButton(busy: _busy, onTap: _shutter),
-                const SizedBox(width: 48), // 좌우 균형(향후 전/후면 토글 자리)
+                _ShutterButton(busy: _busy, onTap: _onShutterTap),
+                _TimerButton(
+                  seconds: _timerSec,
+                  enabled: _countdown == null,
+                  onTap: _cycleTimer,
+                ),
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 셀프 타이머 토글 버튼(셔터 오른쪽). 끄기/3/5/10초를 아이콘+라벨로 표시.
+class _TimerButton extends StatelessWidget {
+  const _TimerButton({
+    required this.seconds,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final int seconds;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = seconds > 0;
+    final color = Colors.white.withValues(alpha: enabled ? 1 : 0.4);
+    return Tooltip(
+      message: '셀프 타이머',
+      child: SizedBox(
+        width: 48,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(24),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(on ? Icons.timer : Icons.timer_off_outlined,
+                    color: color, size: 28),
+                if (on)
+                  Text(
+                    '${seconds}s',
+                    style: TextStyle(
+                        color: color,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );

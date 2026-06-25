@@ -6,7 +6,7 @@
 //   - app_icon_background.png : 적응형 배경(그라데이션)
 //   - app_icon_foreground.png : 적응형 전경(글리프, 투명·세이프존 패딩) — 스플래시에도 사용
 //
-// 디자인: 따뜻한 테라코타 그라데이션 위에 크림색 카메라, 렌즈 안에 하트(가족·온기).
+// 디자인: 연핑크→라일락 파스텔 그라데이션 위에 크림색 카메라, 렌즈 안에 하트(가족·온기).
 // 슬로건 "매달 한 컷, 그날의 우리"의 정서를 단순·견고한 플랫 형태로.
 import 'dart:io';
 
@@ -14,11 +14,11 @@ import 'package:image/image.dart';
 
 const int size = 1024;
 
-// 브랜드 팔레트 — 토스풍 블루.
+// 브랜드 팔레트 — 따뜻한 파스텔(연핑크 → 라일락).
 final _cream = ColorRgb8(0xFF, 0xFF, 0xFF); // 카메라 본체(흰색)
-final _berry = ColorRgb8(0x1B, 0x64, 0xDA); // 렌즈 링·하트(진한 블루)
-final _gradTop = [0x45, 0x93, 0xFC];
-final _gradBottom = [0x31, 0x82, 0xF6];
+final _berry = ColorRgb8(0xB8, 0x51, 0x78); // 렌즈 링·하트(따뜻한 딥 로즈)
+final _gradTop = [0xF2, 0xAD, 0xC8]; // 연핑크
+final _gradBottom = [0xC4, 0xA2, 0xE0]; // 라일락
 
 void main() {
   final dir = Directory('assets/icon');

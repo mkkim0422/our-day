@@ -17,6 +17,8 @@ class OurDayApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
+      // 따뜻한 파스텔 감성이 앱 정체성이라 라이트로 고정(다크모드 폰의 검정 배경 방지).
+      themeMode: ThemeMode.light,
       home: const IntroScreen(),
     );
   }

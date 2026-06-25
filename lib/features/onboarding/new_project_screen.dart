@@ -20,8 +20,10 @@ class NewProjectScreen extends ConsumerStatefulWidget {
 class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
   final _titleController = TextEditingController();
   ScheduleType _scheduleType = ScheduleType.monthly;
-  EventPeg _eventPeg = EventPeg.none;
+  final List<DateTime> _fixedDates = []; // '직접' 선택 시 고른 촬영 날짜들
+  final Set<EventPeg> _eventPegs = {}; // 다중 선택(비어 있으면 '없음')
   DateTime? _birthday; // 주인공 생일(선택, 아이디어1 나이 라벨용)
+  bool _pushEnabled = true; // 선택한 주기/특별한 날 푸시 알림 받기
   bool _saving = false;
 
   @override
@@ -37,31 +39,62 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
     if (title.isEmpty) return;
     setState(() => _saving = true);
     try {
+      // 푸시 on/off를 schedule_config에 보관 → 재예약 때도 사용자 선택을 따른다.
+      final config = _defaultConfig(_scheduleType)..['push'] = _pushEnabled;
+      // '직접'은 사용자가 고른 날짜들을 저장(그날 아침 10시 알림).
+      if (_scheduleType == ScheduleType.fixedDates) {
+        config['dates'] =
+            _fixedDates.map((d) => d.toIso8601String()).toList();
+      }
       final project = await ref.read(projectRepositoryProvider).create(
             title: title,
             scheduleType: _scheduleType,
-            scheduleConfig: _defaultConfig(_scheduleType),
-            eventPeg: _eventPeg,
+            scheduleConfig: config,
+            eventPegs: _eventPegs,
           );
 
-      // 알림 권한은 실제 필요한 시점(첫 프로젝트 생성)에 단계적으로 요청(3·9장).
-      // manual 주기는 예약할 게 없으므로 권한도 강요하지 않는다.
-      final notifications = ref.read(notificationServiceProvider);
-      if (_scheduleType != ScheduleType.manual) {
-        await notifications.requestPermission();
-      }
-      await notifications.scheduleForProject(project, const []);
-
-      // 생일(선택) 저장 — 사진에 나이 라벨 표시(아이디어1).
+      // 생일(선택) 저장 — 사진 나이 라벨 + 생일 페그 알림 날짜로 사용.
       if (_birthday != null) {
         await ref
             .read(appSettingsProvider.notifier)
             .setProjectBirthday(project.id, _birthday);
       }
 
+      // 푸시를 켰을 때만 권한을 요청하고 예약한다(동의 받는 시점에 요청, 3·9장).
+      final notifications = ref.read(notificationServiceProvider);
+      if (_pushEnabled) {
+        await notifications.requestPermission();
+      }
+      await notifications
+          .scheduleForProject(project, const [], birthday: _birthday);
+
       if (mounted) Navigator.of(context).pop<Project>(project);
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  String _fmtDate(DateTime d) =>
+      '${d.year}.${d.month.toString().padLeft(2, '0')}.${d.day.toString().padLeft(2, '0')}';
+
+  /// '직접' 주기: 달력에서 촬영 날짜를 골라 목록에 추가(중복 방지·정렬).
+  Future<void> _addFixedDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: now,
+      lastDate: DateTime(now.year + 5),
+      helpText: '촬영할 날짜',
+    );
+    if (picked == null) return;
+    final d = DateTime(picked.year, picked.month, picked.day);
+    if (!_fixedDates.contains(d)) {
+      setState(() {
+        _fixedDates
+          ..add(d)
+          ..sort();
+      });
     }
   }
 
@@ -77,20 +110,23 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
     if (picked != null) setState(() => _birthday = picked);
   }
 
-  /// 주기 유형별 기본 schedule_config(2장). 세부 설정은 추후 설정 화면에서 조정.
+  /// 주기 유형별 기본 schedule_config(2장). 푸시는 모두 **아침 10시**.
+  /// 세부 설정은 추후 설정 화면에서 조정.
   Map<String, dynamic> _defaultConfig(ScheduleType type) {
     final now = DateTime.now();
     switch (type) {
+      case ScheduleType.daily:
+        return {'time': '10:00'};
       case ScheduleType.weekly:
       case ScheduleType.biweekly:
         return {'weekday': now.weekday, 'time': '10:00'};
       case ScheduleType.monthly:
-        return {'day': now.day};
+        return {'day': now.day, 'time': '10:00'};
       case ScheduleType.yearly:
-        return {'month': now.month, 'day': now.day};
+        return {'month': now.month, 'day': now.day, 'time': '10:00'};
       case ScheduleType.fixedDates:
       case ScheduleType.manual:
-        return {};
+        return {'time': '10:00'};
     }
   }
 
@@ -104,7 +140,7 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
         children: [
           Text('무엇을 기록할까요?', style: text.titleMedium),
           const SizedBox(height: 4),
-          Text('예: 우리 가족, 첫째 아이',
+          Text('예: 우리 가족, 첫째 아이, 여행, 생일',
               style: text.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 12),
@@ -113,7 +149,7 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
             autofocus: true,
             textInputAction: TextInputAction.done,
             decoration: const InputDecoration(
-              hintText: '프로젝트 이름',
+              hintText: '기록 이름',
               border: OutlineInputBorder(),
             ),
             onChanged: (_) => setState(() {}),
@@ -126,12 +162,45 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
             value: _scheduleType,
             onChanged: (v) => setState(() => _scheduleType = v),
           ),
+          if (_scheduleType == ScheduleType.fixedDates) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final d in _fixedDates)
+                  InputChip(
+                    label: Text(_fmtDate(d)),
+                    onDeleted: () => setState(() => _fixedDates.remove(d)),
+                  ),
+                ActionChip(
+                  avatar: const Icon(Icons.calendar_month, size: 18),
+                  label: const Text('날짜 추가'),
+                  onPressed: _addFixedDate,
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _fixedDates.isEmpty
+                  ? '고른 날 아침 10시에 알려드려요. (안 고르면 자유롭게 촬영)'
+                  : '고른 ${_fixedDates.length}일에 아침 10시 알림을 보내드려요',
+              style: text.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ],
           const SizedBox(height: 28),
-          Text('특별한 날에 묶을까요? (선택)', style: text.titleMedium),
+          Text('특별한 날도 챙겨볼까요?', style: text.titleMedium),
           const SizedBox(height: 12),
           _EventPegSelector(
-            value: _eventPeg,
-            onChanged: (v) => setState(() => _eventPeg = v),
+            selected: _eventPegs,
+            onToggle: (peg) => setState(() {
+              if (_eventPegs.contains(peg)) {
+                _eventPegs.remove(peg);
+              } else {
+                _eventPegs.add(peg);
+              }
+            }),
           ),
           const SizedBox(height: 28),
           Text('주인공 생일 (선택)', style: text.titleMedium),
@@ -147,19 +216,44 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
                 ? '생일 선택'
                 : '${_birthday!.year}.${_birthday!.month.toString().padLeft(2, '0')}.${_birthday!.day.toString().padLeft(2, '0')}'),
           ),
-          const SizedBox(height: 36),
-          FilledButton(
-            onPressed: _canSubmit ? _create : null,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
+          const SizedBox(height: 24),
+          // 알림 받기 — 켜면 권한 요청 + 선택 주기/특별한 날 아침 10시 발송.
+          Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(14),
             ),
-            child: _saving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('시작하기'),
+            child: SwitchListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+              value: _pushEnabled,
+              onChanged: (v) => setState(() => _pushEnabled = v),
+              title: const Text('알림 받기'),
+              subtitle: Text(
+                '선택한 주기와 특별한 날에 알림을 보내드릴까요?',
+                style: text.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+            ),
+          ),
+          const SizedBox(height: 32),
+          // 시작하기 — 하단 고정 바가 아니라 여백을 두고 띄운 형태.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 28),
+            child: FilledButton(
+              onPressed: _canSubmit ? _create : null,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(54),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+              ),
+              child: _saving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('시작하기'),
+            ),
           ),
         ],
       ),
@@ -172,13 +266,20 @@ class _ScheduleSelector extends StatelessWidget {
   final ScheduleType value;
   final ValueChanged<ScheduleType> onChanged;
 
+  // 화면에 노출할 주기(격주 제외). '직접'은 달력에서 날짜를 직접 고르는 fixedDates.
+  static const _shown = [
+    ScheduleType.daily,
+    ScheduleType.weekly,
+    ScheduleType.monthly,
+    ScheduleType.yearly,
+    ScheduleType.fixedDates,
+  ];
   static const _labels = {
+    ScheduleType.daily: '매일',
     ScheduleType.weekly: '매주',
-    ScheduleType.biweekly: '격주',
     ScheduleType.monthly: '매월',
     ScheduleType.yearly: '매년',
-    ScheduleType.fixedDates: '지정일',
-    ScheduleType.manual: '직접',
+    ScheduleType.fixedDates: '직접',
   };
 
   @override
@@ -186,7 +287,7 @@ class _ScheduleSelector extends StatelessWidget {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: ScheduleType.values.map((t) {
+      children: _shown.map((t) {
         return ChoiceChip(
           label: Text(_labels[t]!),
           selected: value == t,
@@ -197,13 +298,14 @@ class _ScheduleSelector extends StatelessWidget {
   }
 }
 
+/// 이벤트 페그 다중 선택 — 생일·명절·계절을 동시에 고를 수 있다(아무것도 안 고르면 '없음').
 class _EventPegSelector extends StatelessWidget {
-  const _EventPegSelector({required this.value, required this.onChanged});
-  final EventPeg value;
-  final ValueChanged<EventPeg> onChanged;
+  const _EventPegSelector({required this.selected, required this.onToggle});
+  final Set<EventPeg> selected;
+  final ValueChanged<EventPeg> onToggle;
 
+  static const _options = [EventPeg.birthday, EventPeg.holiday, EventPeg.season];
   static const _labels = {
-    EventPeg.none: '없음',
     EventPeg.birthday: '생일',
     EventPeg.holiday: '명절',
     EventPeg.season: '계절',
@@ -214,11 +316,11 @@ class _EventPegSelector extends StatelessWidget {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: EventPeg.values.map((e) {
-        return ChoiceChip(
+      children: _options.map((e) {
+        return FilterChip(
           label: Text(_labels[e]!),
-          selected: value == e,
-          onSelected: (_) => onChanged(e),
+          selected: selected.contains(e),
+          onSelected: (_) => onToggle(e),
         );
       }).toList(),
     );
