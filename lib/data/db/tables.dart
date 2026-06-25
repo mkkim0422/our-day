@@ -90,6 +90,10 @@ class Captures extends Table {
   TextColumn get backupState =>
       textEnum<BackupState>().withDefault(const Constant('localOnly'))();
 
+  /// 꾸미기 결과 이미지 경로(있으면 기록에서 이 버전을 보여줌). 원본(filePath)은
+  /// 타임랩스·오버레이용으로 그대로 보존(꾸미기 v3).
+  TextColumn get decoratedPath => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

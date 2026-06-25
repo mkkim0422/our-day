@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/utils/age_label.dart';
 import '../../data/db/app_database.dart';
+import '../../data/repositories/providers.dart';
 import '../../services/providers.dart';
 import 'skin.dart';
 import 'skin_card.dart';
@@ -72,17 +73,25 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
     }
   }
 
-  /// 갤러리에 저장 — **원본은 타임라인에 그대로 보존**, 꾸민 사진만 사진앱에 추가.
-  Future<void> _saveToGallery() async {
+  /// 저장 — 꾸민 사진을 **앱 기록(타임라인)에 붙여** 보이게 한다.
+  /// 원본 사진(filePath)은 타임랩스·오버레이용으로 그대로 보존. 갤러리에도 함께 담음.
+  Future<void> _saveToRecords() async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final path = await _capture();
-      if (!await Gal.hasAccess()) await Gal.requestAccess();
-      await Gal.putImage(path, album: '그날 우리');
-      _snack('갤러리에 저장했어요. 원본은 타임라인에 그대로 있어요.');
-    } on GalException catch (e) {
-      _snack('저장 실패: ${e.type.message}');
+      final path = await _capture(); // documents/exports (영구 보관)
+      await ref
+          .read(captureRepositoryProvider)
+          .setDecoratedPath(widget.capture.id, path);
+      // 갤러리에도 담기(권한/실패는 무시 — 기록 저장이 본질).
+      try {
+        if (!await Gal.hasAccess()) await Gal.requestAccess();
+        await Gal.putImage(path, album: '그날 우리');
+      } catch (_) {}
+      if (mounted) {
+        _snack('기록에 저장했어요. 원본은 그대로 보존돼요.');
+        Navigator.of(context).pop();
+      }
     } catch (e) {
       _snack('저장 실패: $e');
     } finally {
@@ -236,7 +245,7 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
                 children: [
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: _busy ? null : _saveToGallery,
+                      onPressed: _busy ? null : _saveToRecords,
                       icon: const Icon(Icons.download_rounded),
                       label: const Text('저장'),
                     ),

@@ -12,7 +12,6 @@ import '../capture/alignment_meta.dart';
 import '../home/home_providers.dart';
 import 'collage_poster_screen.dart';
 import 'growth_chart_screen.dart';
-import 'onion_skin_screen.dart';
 import 'widgets/timelapse_player.dart';
 
 /// ⑤ 비교 / 타임랩스 — "가치 실현 순간"(변화 체감).
@@ -181,15 +180,9 @@ class _CompareViewState extends ConsumerState<CompareView> {
             onTap: () => _push(ScrubberScreen(project: widget.project)),
           ),
           _MenuRow(
-            icon: Icons.layers_outlined,
-            title: '변화의 잔상',
-            subtitle: '여러 컷을 겹쳐서 한눈에',
-            onTap: () => _push(OnionSkinScreen(project: widget.project)),
-          ),
-          _MenuRow(
             icon: Icons.grid_view_rounded,
             title: '성장 포스터',
-            subtitle: '모든 컷을 한 장으로',
+            subtitle: '모든 컷을 한 장 이미지로 모아 인쇄·공유',
             onTap: () => _push(CollagePosterScreen(project: widget.project)),
           ),
           _MenuRow(

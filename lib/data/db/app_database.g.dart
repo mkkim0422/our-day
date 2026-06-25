@@ -1822,6 +1822,17 @@ class $CapturesTable extends Captures with TableInfo<$CapturesTable, Capture> {
         requiredDuringInsert: false,
         defaultValue: const Constant('localOnly'),
       ).withConverter<BackupState>($CapturesTable.$converterbackupState);
+  static const VerificationMeta _decoratedPathMeta = const VerificationMeta(
+    'decoratedPath',
+  );
+  @override
+  late final GeneratedColumn<String> decoratedPath = GeneratedColumn<String>(
+    'decorated_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1834,6 +1845,7 @@ class $CapturesTable extends Captures with TableInfo<$CapturesTable, Capture> {
     note,
     placeId,
     backupState,
+    decoratedPath,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1907,6 +1919,15 @@ class $CapturesTable extends Captures with TableInfo<$CapturesTable, Capture> {
         placeId.isAcceptableOrUnknown(data['place_id']!, _placeIdMeta),
       );
     }
+    if (data.containsKey('decorated_path')) {
+      context.handle(
+        _decoratedPathMeta,
+        decoratedPath.isAcceptableOrUnknown(
+          data['decorated_path']!,
+          _decoratedPathMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1960,6 +1981,10 @@ class $CapturesTable extends Captures with TableInfo<$CapturesTable, Capture> {
           data['${effectivePrefix}backup_state'],
         )!,
       ),
+      decoratedPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}decorated_path'],
+      ),
     );
   }
 
@@ -1993,6 +2018,10 @@ class Capture extends DataClass implements Insertable<Capture> {
   final String? note;
   final String? placeId;
   final BackupState backupState;
+
+  /// 꾸미기 결과 이미지 경로(있으면 기록에서 이 버전을 보여줌). 원본(filePath)은
+  /// 타임랩스·오버레이용으로 그대로 보존(꾸미기 v3).
+  final String? decoratedPath;
   const Capture({
     required this.id,
     required this.projectId,
@@ -2004,6 +2033,7 @@ class Capture extends DataClass implements Insertable<Capture> {
     this.note,
     this.placeId,
     required this.backupState,
+    this.decoratedPath,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2030,6 +2060,9 @@ class Capture extends DataClass implements Insertable<Capture> {
         $CapturesTable.$converterbackupState.toSql(backupState),
       );
     }
+    if (!nullToAbsent || decoratedPath != null) {
+      map['decorated_path'] = Variable<String>(decoratedPath);
+    }
     return map;
   }
 
@@ -2049,6 +2082,9 @@ class Capture extends DataClass implements Insertable<Capture> {
           ? const Value.absent()
           : Value(placeId),
       backupState: Value(backupState),
+      decoratedPath: decoratedPath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(decoratedPath),
     );
   }
 
@@ -2072,6 +2108,7 @@ class Capture extends DataClass implements Insertable<Capture> {
       backupState: $CapturesTable.$converterbackupState.fromJson(
         serializer.fromJson<String>(json['backupState']),
       ),
+      decoratedPath: serializer.fromJson<String?>(json['decoratedPath']),
     );
   }
   @override
@@ -2090,6 +2127,7 @@ class Capture extends DataClass implements Insertable<Capture> {
       'backupState': serializer.toJson<String>(
         $CapturesTable.$converterbackupState.toJson(backupState),
       ),
+      'decoratedPath': serializer.toJson<String?>(decoratedPath),
     };
   }
 
@@ -2104,6 +2142,7 @@ class Capture extends DataClass implements Insertable<Capture> {
     Value<String?> note = const Value.absent(),
     Value<String?> placeId = const Value.absent(),
     BackupState? backupState,
+    Value<String?> decoratedPath = const Value.absent(),
   }) => Capture(
     id: id ?? this.id,
     projectId: projectId ?? this.projectId,
@@ -2117,6 +2156,9 @@ class Capture extends DataClass implements Insertable<Capture> {
     note: note.present ? note.value : this.note,
     placeId: placeId.present ? placeId.value : this.placeId,
     backupState: backupState ?? this.backupState,
+    decoratedPath: decoratedPath.present
+        ? decoratedPath.value
+        : this.decoratedPath,
   );
   Capture copyWithCompanion(CapturesCompanion data) {
     return Capture(
@@ -2138,6 +2180,9 @@ class Capture extends DataClass implements Insertable<Capture> {
       backupState: data.backupState.present
           ? data.backupState.value
           : this.backupState,
+      decoratedPath: data.decoratedPath.present
+          ? data.decoratedPath.value
+          : this.decoratedPath,
     );
   }
 
@@ -2153,7 +2198,8 @@ class Capture extends DataClass implements Insertable<Capture> {
           ..write('alignmentMeta: $alignmentMeta, ')
           ..write('note: $note, ')
           ..write('placeId: $placeId, ')
-          ..write('backupState: $backupState')
+          ..write('backupState: $backupState, ')
+          ..write('decoratedPath: $decoratedPath')
           ..write(')'))
         .toString();
   }
@@ -2170,6 +2216,7 @@ class Capture extends DataClass implements Insertable<Capture> {
     note,
     placeId,
     backupState,
+    decoratedPath,
   );
   @override
   bool operator ==(Object other) =>
@@ -2184,7 +2231,8 @@ class Capture extends DataClass implements Insertable<Capture> {
           other.alignmentMeta == this.alignmentMeta &&
           other.note == this.note &&
           other.placeId == this.placeId &&
-          other.backupState == this.backupState);
+          other.backupState == this.backupState &&
+          other.decoratedPath == this.decoratedPath);
 }
 
 class CapturesCompanion extends UpdateCompanion<Capture> {
@@ -2198,6 +2246,7 @@ class CapturesCompanion extends UpdateCompanion<Capture> {
   final Value<String?> note;
   final Value<String?> placeId;
   final Value<BackupState> backupState;
+  final Value<String?> decoratedPath;
   final Value<int> rowid;
   const CapturesCompanion({
     this.id = const Value.absent(),
@@ -2210,6 +2259,7 @@ class CapturesCompanion extends UpdateCompanion<Capture> {
     this.note = const Value.absent(),
     this.placeId = const Value.absent(),
     this.backupState = const Value.absent(),
+    this.decoratedPath = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CapturesCompanion.insert({
@@ -2223,6 +2273,7 @@ class CapturesCompanion extends UpdateCompanion<Capture> {
     this.note = const Value.absent(),
     this.placeId = const Value.absent(),
     this.backupState = const Value.absent(),
+    this.decoratedPath = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        projectId = Value(projectId),
@@ -2241,6 +2292,7 @@ class CapturesCompanion extends UpdateCompanion<Capture> {
     Expression<String>? note,
     Expression<String>? placeId,
     Expression<String>? backupState,
+    Expression<String>? decoratedPath,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2254,6 +2306,7 @@ class CapturesCompanion extends UpdateCompanion<Capture> {
       if (note != null) 'note': note,
       if (placeId != null) 'place_id': placeId,
       if (backupState != null) 'backup_state': backupState,
+      if (decoratedPath != null) 'decorated_path': decoratedPath,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2269,6 +2322,7 @@ class CapturesCompanion extends UpdateCompanion<Capture> {
     Value<String?>? note,
     Value<String?>? placeId,
     Value<BackupState>? backupState,
+    Value<String?>? decoratedPath,
     Value<int>? rowid,
   }) {
     return CapturesCompanion(
@@ -2282,6 +2336,7 @@ class CapturesCompanion extends UpdateCompanion<Capture> {
       note: note ?? this.note,
       placeId: placeId ?? this.placeId,
       backupState: backupState ?? this.backupState,
+      decoratedPath: decoratedPath ?? this.decoratedPath,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2323,6 +2378,9 @@ class CapturesCompanion extends UpdateCompanion<Capture> {
         $CapturesTable.$converterbackupState.toSql(backupState.value),
       );
     }
+    if (decoratedPath.present) {
+      map['decorated_path'] = Variable<String>(decoratedPath.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2342,6 +2400,7 @@ class CapturesCompanion extends UpdateCompanion<Capture> {
           ..write('note: $note, ')
           ..write('placeId: $placeId, ')
           ..write('backupState: $backupState, ')
+          ..write('decoratedPath: $decoratedPath, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4264,6 +4323,7 @@ typedef $$CapturesTableCreateCompanionBuilder =
       Value<String?> note,
       Value<String?> placeId,
       Value<BackupState> backupState,
+      Value<String?> decoratedPath,
       Value<int> rowid,
     });
 typedef $$CapturesTableUpdateCompanionBuilder =
@@ -4278,6 +4338,7 @@ typedef $$CapturesTableUpdateCompanionBuilder =
       Value<String?> note,
       Value<String?> placeId,
       Value<BackupState> backupState,
+      Value<String?> decoratedPath,
       Value<int> rowid,
     });
 
@@ -4391,6 +4452,11 @@ class $$CapturesTableFilterComposer
   get backupState => $composableBuilder(
     column: $table.backupState,
     builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<String> get decoratedPath => $composableBuilder(
+    column: $table.decoratedPath,
+    builder: (column) => ColumnFilters(column),
   );
 
   $$ProjectsTableFilterComposer get projectId {
@@ -4514,6 +4580,11 @@ class $$CapturesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get decoratedPath => $composableBuilder(
+    column: $table.decoratedPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ProjectsTableOrderingComposer get projectId {
     final $$ProjectsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -4603,6 +4674,11 @@ class $$CapturesTableAnnotationComposer
         column: $table.backupState,
         builder: (column) => column,
       );
+
+  GeneratedColumn<String> get decoratedPath => $composableBuilder(
+    column: $table.decoratedPath,
+    builder: (column) => column,
+  );
 
   $$ProjectsTableAnnotationComposer get projectId {
     final $$ProjectsTableAnnotationComposer composer = $composerBuilder(
@@ -4719,6 +4795,7 @@ class $$CapturesTableTableManager
                 Value<String?> note = const Value.absent(),
                 Value<String?> placeId = const Value.absent(),
                 Value<BackupState> backupState = const Value.absent(),
+                Value<String?> decoratedPath = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CapturesCompanion(
                 id: id,
@@ -4731,6 +4808,7 @@ class $$CapturesTableTableManager
                 note: note,
                 placeId: placeId,
                 backupState: backupState,
+                decoratedPath: decoratedPath,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4746,6 +4824,7 @@ class $$CapturesTableTableManager
                 Value<String?> note = const Value.absent(),
                 Value<String?> placeId = const Value.absent(),
                 Value<BackupState> backupState = const Value.absent(),
+                Value<String?> decoratedPath = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CapturesCompanion.insert(
                 id: id,
@@ -4758,6 +4837,7 @@ class $$CapturesTableTableManager
                 note: note,
                 placeId: placeId,
                 backupState: backupState,
+                decoratedPath: decoratedPath,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

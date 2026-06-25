@@ -45,7 +45,9 @@ class _TimelineCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final thumb = File(capture.thumbPath);
+    // 꾸민 사진이 있으면 기록에 그 버전을 보여준다(원본은 타임랩스용으로 보존).
+    final decorated = capture.decoratedPath != null;
+    final img = File(decorated ? capture.decoratedPath! : capture.thumbPath);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
@@ -55,13 +57,32 @@ class _TimelineCell extends StatelessWidget {
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
-              child: thumb.existsSync()
-                  ? Image.file(thumb, fit: BoxFit.cover)
-                  : Container(
-                      color: scheme.surfaceContainerHighest,
-                      child: Icon(Icons.image_not_supported_outlined,
-                          color: scheme.onSurfaceVariant),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  img.existsSync()
+                      ? Image.file(img, fit: BoxFit.cover)
+                      : Container(
+                          color: scheme.surfaceContainerHighest,
+                          child: Icon(Icons.image_not_supported_outlined,
+                              color: scheme.onSurfaceVariant),
+                        ),
+                  if (decorated)
+                    Positioned(
+                      right: 4,
+                      top: 4,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.auto_awesome,
+                            size: 12, color: Colors.white),
+                      ),
                     ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 4),

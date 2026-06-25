@@ -208,9 +208,14 @@ class _CapturePageState extends ConsumerState<_CapturePage> {
     if (mounted) setState(() => _taggedIds = ids.toSet());
   }
 
+  bool _showOriginal = false;
+
   @override
   Widget build(BuildContext context) {
-    final file = File(widget.capture.filePath);
+    // 꾸민 사진이 있으면 기록에서 그 버전을 기본으로 보여준다(토글로 원본 보기).
+    final decorated = widget.capture.decoratedPath;
+    final showDecor = decorated != null && !_showOriginal;
+    final file = File(showDecor ? decorated : widget.capture.filePath);
     return Column(
       children: [
         Expanded(
@@ -256,11 +261,29 @@ class _CapturePageState extends ConsumerState<_CapturePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            age == null
-                ? _formatDate(widget.capture.capturedAt)
-                : '${_formatDate(widget.capture.capturedAt)} · $age',
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  age == null
+                      ? _formatDate(widget.capture.capturedAt)
+                      : '${_formatDate(widget.capture.capturedAt)} · $age',
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+              ),
+              // 꾸민 사진이 있으면 원본/꾸민 사진 전환.
+              if (widget.capture.decoratedPath != null)
+                TextButton.icon(
+                  style: TextButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 8)),
+                  icon: Icon(_showOriginal ? Icons.auto_awesome : Icons.image,
+                      size: 16),
+                  label: Text(_showOriginal ? '꾸민 사진' : '원본'),
+                  onPressed: () =>
+                      setState(() => _showOriginal = !_showOriginal),
+                ),
+            ],
           ),
           const SizedBox(height: 8),
           InkWell(

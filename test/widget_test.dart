@@ -46,9 +46,11 @@ void main() {
         child: const OurDayApp(),
       ),
     );
-    // 인트로 애니메이션(약 2.1초)과 전환을 통과시킨다.
-    await tester.pump(const Duration(seconds: 3));
-    await tester.pump(const Duration(seconds: 1));
+    // 인트로 애니메이션(약 2.1초) + 1초 머무름 + 전환을 모두 통과시킨다.
+    await tester.pump(); // 인트로 빌드
+    await tester.pump(const Duration(milliseconds: 2200)); // 애니 완료
+    await tester.pump(const Duration(milliseconds: 1200)); // 1초 지연 타이머 발화 → 전환
+    await tester.pump(const Duration(milliseconds: 700)); // 전환 페이드 정착
 
     expect(find.text('그날 우리'), findsWidgets);
     expect(find.text('시작하기'), findsOneWidget);

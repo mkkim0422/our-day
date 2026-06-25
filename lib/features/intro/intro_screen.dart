@@ -28,7 +28,10 @@ class _IntroScreenState extends State<IntroScreen>
       duration: const Duration(milliseconds: 2100),
     )..forward();
     _c.addStatusListener((s) {
-      if (s == AnimationStatus.completed) _go();
+      // 슬로건이 다 뜬 뒤 약 1초 머물렀다가 전환(너무 빨리 넘어가지 않게).
+      if (s == AnimationStatus.completed) {
+        Future.delayed(const Duration(milliseconds: 1000), _go);
+      }
     });
   }
 
@@ -61,7 +64,6 @@ class _IntroScreenState extends State<IntroScreen>
     final logoFade = _interval(0.0, 0.32, Curves.easeOut);
     final titleAnim = _interval(0.32, 0.62, Curves.easeOut);
     final sloganAnim = _interval(0.55, 0.82, Curves.easeOut);
-    final screenFade = _interval(0.9, 1.0, Curves.easeIn);
 
     return GestureDetector(
       onTap: _go, // 탭하면 건너뛰기.
@@ -69,9 +71,7 @@ class _IntroScreenState extends State<IntroScreen>
         body: AnimatedBuilder(
           animation: _c,
           builder: (context, _) {
-            return Opacity(
-              opacity: 1 - screenFade.value,
-              child: Container(
+            return Container(
                 width: double.infinity,
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
@@ -119,8 +119,7 @@ class _IntroScreenState extends State<IntroScreen>
                     const Spacer(flex: 4),
                   ],
                 ),
-              ),
-            );
+              );
           },
         ),
       ),

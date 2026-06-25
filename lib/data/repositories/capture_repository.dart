@@ -99,6 +99,12 @@ class CaptureRepository {
         .write(CapturesCompanion(alignmentMeta: Value(meta)));
   }
 
+  /// 꾸미기 결과 경로 저장(원본은 그대로, 기록에 꾸민 버전 표시). null이면 원본으로 되돌림.
+  Future<void> setDecoratedPath(String id, String? path) {
+    return (_db.update(_db.captures)..where((c) => c.id.equals(id)))
+        .write(CapturesCompanion(decoratedPath: Value(path)));
+  }
+
   /// 한 줄 메모 저장(아이디어3 — 그날의 한마디). 빈 문자열이면 null로 비움.
   Future<void> updateNote(String id, String? note) {
     final value = (note == null || note.trim().isEmpty) ? null : note.trim();
