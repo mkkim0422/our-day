@@ -9,6 +9,8 @@ import '../../services/timelapse/timelapse_service.dart';
 import '../../core/utils/age_label.dart';
 import '../../data/repositories/providers.dart';
 import '../capture/alignment_meta.dart';
+import '../capture/backfill_screen.dart';
+import '../capture/capture_screen.dart';
 import '../home/home_providers.dart';
 import 'collage_poster_screen.dart';
 import 'growth_chart_screen.dart';
@@ -82,7 +84,7 @@ class _CompareViewState extends ConsumerState<CompareView> {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('불러오기 오류: $e')),
       data: (captures) {
-        if (captures.length < 2) return const _NeedMore();
+        if (captures.length < 2) return _NeedMore(project: widget.project);
         // repository는 최신순(desc) → 타임랩스/비교는 시간순(asc).
         final asc = captures.reversed.toList(growable: false);
         return _content(asc);
@@ -158,14 +160,8 @@ class _CompareViewState extends ConsumerState<CompareView> {
           key: _compareKey,
           child: _CompareCard(first: first, last: last, birthday: birthday),
         ),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: _exporting ? null : _shareComparison,
-          icon: const Icon(Icons.image_outlined),
-          label: const Text('비교 이미지 공유'),
-        ),
         const SizedBox(height: 32),
-        // ── 더 보기(부가 도구는 깔끔한 메뉴로 정리).
+        // ── 더 보기(부가 도구는 깔끔한 메뉴로 정리 — 1차 액션은 위 타임랩스 하나).
         Text('더 보기',
             style: Theme.of(context)
                 .textTheme
@@ -173,6 +169,12 @@ class _CompareViewState extends ConsumerState<CompareView> {
                 ?.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: 10),
         _MenuCard(rows: [
+          _MenuRow(
+            icon: Icons.image_outlined,
+            title: '비교 이미지 공유',
+            subtitle: '그때 vs 지금을 한 장으로',
+            onTap: _exporting ? null : _shareComparison,
+          ),
           _MenuRow(
             icon: Icons.swipe_outlined,
             title: '밀어서 변화 보기',
@@ -399,7 +401,8 @@ class _Side extends StatelessWidget {
 
 /// 사진이 2장 미만일 때 안내(비교/타임랩스는 최소 2컷 필요).
 class _NeedMore extends StatelessWidget {
-  const _NeedMore();
+  const _NeedMore({required this.project});
+  final Project project;
 
   @override
   Widget build(BuildContext context) {
@@ -413,7 +416,7 @@ class _NeedMore extends StatelessWidget {
             Icon(Icons.auto_awesome_motion_outlined,
                 size: 56, color: scheme.onSurfaceVariant),
             const SizedBox(height: 16),
-            Text('아직 비교할 게 없어요',
+            Text('아직 추억 영상을 만들 수 없어요',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             Text(
@@ -423,6 +426,24 @@ class _NeedMore extends StatelessWidget {
                   .textTheme
                   .bodyMedium
                   ?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => CaptureScreen(project: project)),
+              ),
+              icon: const Icon(Icons.camera_alt_rounded),
+              label: const Text('지금 한 컷 찍기'),
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                    builder: (_) => BackfillScreen(project: project)),
+              ),
+              icon: const Icon(Icons.library_add_outlined),
+              label: const Text('예전 사진으로 채우기'),
             ),
           ],
         ),
@@ -603,7 +624,7 @@ class _MenuRow extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
