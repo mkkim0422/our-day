@@ -14,6 +14,14 @@ enum Motif {
   hearts, // 하트 클러스터
   stars, // 별 흩뿌림
   rainbow, // 무지개 아치(코너)
+  washiTape, // 워시 테이프(상단 모서리)
+  bunting, // 가랜드(삼각 깃발)
+  snow, // 눈송이
+  scallop, // 스캘럽 레이스(하단)
+  floral, // 꽃 클러스터
+  fern, // 고사리/들풀(하단 코너)
+  ruleLines, // 매거진 괘선
+  ornaments, // 행잉 오너먼트(홀리데이)
 }
 
 /// 스킨의 모티프들을 사진 영역 전체에 그린다.
@@ -50,6 +58,22 @@ class SkinMotifsPainter extends CustomPainter {
           _stars(canvas, size);
         case Motif.rainbow:
           _rainbow(canvas, size);
+        case Motif.washiTape:
+          _washiTape(canvas, size);
+        case Motif.bunting:
+          _bunting(canvas, size);
+        case Motif.snow:
+          _snow(canvas, size);
+        case Motif.scallop:
+          _scallop(canvas, size);
+        case Motif.floral:
+          _floral(canvas, size);
+        case Motif.fern:
+          _fern(canvas, size);
+        case Motif.ruleLines:
+          _ruleLines(canvas, size);
+        case Motif.ornaments:
+          _ornaments(canvas, size);
       }
     }
   }
@@ -244,6 +268,150 @@ class SkinMotifsPainter extends CustomPainter {
         false,
         p,
       );
+    }
+  }
+
+  void _washiTape(Canvas canvas, Size s) {
+    void tape(Offset c, double angle, Color col) {
+      canvas.save();
+      canvas.translate(c.dx, c.dy);
+      canvas.rotate(angle);
+      final rect = RRect.fromRectAndRadius(
+          const Rect.fromLTWH(-34, -11, 68, 22), const Radius.circular(2));
+      canvas.drawRRect(rect, _fill(col.withValues(alpha: 0.55)));
+      // 무광 줄무늬.
+      final stripe = _fill(Colors.white.withValues(alpha: 0.25));
+      for (var x = -28.0; x < 30; x += 9) {
+        canvas.drawRect(Rect.fromLTWH(x, -11, 3, 22), stripe);
+      }
+      canvas.restore();
+    }
+
+    tape(Offset(s.width * 0.16, s.height * 0.05), -0.18, accent);
+    tape(Offset(s.width * 0.84, s.height * 0.05), 0.18, accent2 ?? accent);
+  }
+
+  void _bunting(Canvas canvas, Size s) {
+    final y = s.height * 0.06;
+    final string = _stroke
+      ..color = accent.withValues(alpha: 0.8)
+      ..strokeWidth = 1.5;
+    final path = Path()
+      ..moveTo(0, y)
+      ..quadraticBezierTo(s.width / 2, y + 14, s.width, y);
+    canvas.drawPath(path, string);
+    final cols = [
+      accent,
+      accent2 ?? accent,
+      const Color(0xFFFFD36E),
+      const Color(0xFF9FD8CB),
+    ];
+    const n = 7;
+    for (var i = 0; i < n; i++) {
+      final t = (i + 0.5) / n;
+      final x = t * s.width;
+      final fy = y + 14 * (1 - (2 * t - 1) * (2 * t - 1));
+      final flag = Path()
+        ..moveTo(x - 8, fy)
+        ..lineTo(x + 8, fy)
+        ..lineTo(x, fy + 16)
+        ..close();
+      canvas.drawPath(flag, _fill(cols[i % cols.length]));
+    }
+  }
+
+  void _snow(Canvas canvas, Size s) {
+    final rnd = math.Random(11);
+    for (var i = 0; i < 26; i++) {
+      final x = rnd.nextDouble() * s.width;
+      final y = rnd.nextDouble() * s.height;
+      final r = 1.5 + rnd.nextDouble() * 3;
+      canvas.drawCircle(
+          Offset(x, y), r, _fill(Colors.white.withValues(alpha: 0.85)));
+    }
+  }
+
+  void _scallop(Canvas canvas, Size s) {
+    final r = s.width * 0.045;
+    final p = _fill(accent.withValues(alpha: 0.9));
+    final y = s.height - r * 0.2;
+    for (var x = r; x < s.width; x += r * 2) {
+      canvas.drawCircle(Offset(x, y), r, p);
+    }
+  }
+
+  void _floral(Canvas canvas, Size s) {
+    void flower(Offset c, double r, Color petal, Color core) {
+      for (var i = 0; i < 5; i++) {
+        final a = i * 2 * math.pi / 5;
+        canvas.drawCircle(
+            c + Offset(math.cos(a) * r, math.sin(a) * r), r * 0.62, _fill(petal));
+      }
+      canvas.drawCircle(c, r * 0.55, _fill(core));
+    }
+
+    final core = accent2 ?? const Color(0xFFFFD36E);
+    flower(Offset(s.width * 0.13, s.height * 0.86), 12, accent, core);
+    flower(Offset(s.width * 0.22, s.height * 0.93), 8, accent, core);
+    flower(Offset(s.width * 0.88, s.height * 0.12), 10, accent, core);
+  }
+
+  void _fern(Canvas canvas, Size s) {
+    void stem(Offset base, double dir) {
+      final stroke = _stroke
+        ..color = accent
+        ..strokeWidth = 1.6;
+      final tip = base + Offset(dir * s.width * 0.16, -s.height * 0.22);
+      final path = Path()
+        ..moveTo(base.dx, base.dy)
+        ..quadraticBezierTo(
+            base.dx + dir * s.width * 0.04, base.dy - s.height * 0.12, tip.dx, tip.dy);
+      canvas.drawPath(path, stroke);
+      final leaf = _fill(accent.withValues(alpha: 0.85));
+      for (var t = 0.2; t <= 1.0; t += 0.16) {
+        final p = Offset.lerp(base, tip, t)!;
+        for (final side in [1.0, -1.0]) {
+          canvas.save();
+          canvas.translate(p.dx, p.dy);
+          canvas.rotate(dir * side * 0.8 - 1.0);
+          canvas.drawOval(
+              Rect.fromCenter(center: Offset.zero, width: 11, height: 4.5), leaf);
+          canvas.restore();
+        }
+      }
+    }
+
+    stem(Offset(s.width * 0.10, s.height * 0.96), 1);
+    stem(Offset(s.width * 0.90, s.height * 0.96), -1);
+  }
+
+  void _ruleLines(Canvas canvas, Size s) {
+    final p = _stroke
+      ..color = accent
+      ..strokeWidth = 2;
+    canvas.drawLine(Offset(s.width * 0.08, s.height * 0.08),
+        Offset(s.width * 0.92, s.height * 0.08), p);
+    final thin = _stroke
+      ..color = accent.withValues(alpha: 0.6)
+      ..strokeWidth = 1;
+    canvas.drawLine(Offset(s.width * 0.08, s.height * 0.115),
+        Offset(s.width * 0.92, s.height * 0.115), thin);
+    canvas.drawLine(Offset(s.width * 0.08, s.height * 0.92),
+        Offset(s.width * 0.92, s.height * 0.92), p);
+  }
+
+  void _ornaments(Canvas canvas, Size s) {
+    final y0 = s.height * 0.04;
+    final cols = [accent, accent2 ?? accent, const Color(0xFFE9C46A)];
+    final xs = [0.22, 0.5, 0.78];
+    final drops = [0.16, 0.24, 0.18];
+    for (var i = 0; i < xs.length; i++) {
+      final x = s.width * xs[i];
+      final cy = y0 + s.height * drops[i];
+      canvas.drawLine(Offset(x, y0), Offset(x, cy - 8),
+          _stroke..color = accent.withValues(alpha: 0.7)..strokeWidth = 1.2);
+      canvas.drawCircle(Offset(x, cy), 9, _fill(cols[i % cols.length]));
+      canvas.drawCircle(Offset(x, cy - 9), 2.5, _fill(accent));
     }
   }
 

@@ -47,6 +47,12 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
   bool _showOverlay = true;
   bool _busy = false;
 
+  // 기본 카메라 기능: 줌·탭포커스·플래시·전후면.
+  double _baseZoom = 1.0;
+  FlashMode _flash = FlashMode.off;
+  Offset? _focusPoint; // 탭 포커스 표시(잠깐)
+  Timer? _focusTimer;
+
   // 셀프 타이머: 0(끄기) → 3 → 5 → 10초 순환. 같은 포즈로 직접 들어가 찍을 때 유용.
   static const _timerOptions = [0, 3, 5, 10];
   int _timerSec = 0;
@@ -80,6 +86,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
         await _camera.dispose();
         return;
       }
+      await _camera.setFlashMode(_flash);
     } on CameraException catch (e) {
       if (mounted) setState(() => _error = e.description ?? e.code);
     } finally {
@@ -107,6 +114,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _countdownTimer?.cancel();
+    _focusTimer?.cancel();
     _camera.dispose();
     super.dispose();
   }
@@ -155,6 +163,51 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
     _countdownTimer?.cancel();
     _countdownTimer = null;
     if (_countdown != null && mounted) setState(() => _countdown = null);
+  }
+
+  // ── 기본 카메라 기능 ──
+
+  void _onScaleStart(ScaleStartDetails d) => _baseZoom = _camera.zoom;
+
+  void _onScaleUpdate(ScaleUpdateDetails d) {
+    if (d.pointerCount < 2) return; // 한 손가락은 무시(탭 포커스용).
+    _camera.setZoom(_baseZoom * d.scale);
+    setState(() {}); // 줌 표시 갱신.
+  }
+
+  void _onTapFocus(TapUpDetails d) {
+    final size = context.size;
+    if (size == null) return;
+    final local = d.localPosition;
+    _camera.focusAt(Offset(
+      (local.dx / size.width).clamp(0.0, 1.0),
+      (local.dy / size.height).clamp(0.0, 1.0),
+    ));
+    setState(() => _focusPoint = local);
+    _focusTimer?.cancel();
+    _focusTimer = Timer(const Duration(milliseconds: 900), () {
+      if (mounted) setState(() => _focusPoint = null);
+    });
+  }
+
+  void _cycleFlash() {
+    const modes = [FlashMode.off, FlashMode.auto, FlashMode.always];
+    final next = modes[(modes.indexOf(_flash) + 1) % modes.length];
+    setState(() => _flash = next);
+    _camera.setFlashMode(next);
+  }
+
+  Future<void> _switchLens() async {
+    if (_busy || !_camera.hasFrontAndBack) return;
+    setState(() => _busy = true);
+    try {
+      await _camera.switchLens();
+      await _camera.setFlashMode(_flash);
+    } on CameraException catch (e) {
+      _snack('카메라 전환 실패: ${e.description ?? e.code}');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _capture() async {
@@ -223,10 +276,18 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
     return Stack(
       fit: StackFit.expand,
       children: [
-        // 카메라 실시간 뷰파인더.
+        // 카메라 실시간 뷰파인더 — 화면을 cover로 꽉 채워 오버레이/저장본과 크롭 일치.
+        // 핀치=줌, 탭=초점.
         if (_camera.isReady)
-          Center(child: CameraPreview(_camera.controller!)),
-        // 직전/기준 사진 반투명 오버레이.
+          Positioned.fill(
+            child: GestureDetector(
+              onScaleStart: _onScaleStart,
+              onScaleUpdate: _onScaleUpdate,
+              onTapUp: _onTapFocus,
+              child: _coverPreview(),
+            ),
+          ),
+        // 직전/기준 사진 반투명 오버레이(프리뷰와 동일하게 cover → 정렬 일치).
         if (_hasReference && _showOverlay)
           IgnorePointer(
             child: Opacity(
@@ -234,12 +295,14 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
               child: Image.file(
                 File(_referencePath!),
                 fit: BoxFit.cover,
-                // 기준 원본이 없으면(예: 복원 후) 깨진 오버레이 대신 숨김.
                 errorBuilder: (_, _, _) => const SizedBox.shrink(),
               ),
             ),
           ),
-        const GuideGrid(),
+        const IgnorePointer(child: GuideGrid()),
+        if (_focusPoint != null) _focusIndicator(),
+        if (_camera.isReady && _camera.zoom > _camera.minZoom + 0.05)
+          _zoomPill(),
         if (_countdown != null) _countdownOverlay(),
         _topBar(),
         _bottomControls(),
@@ -256,6 +319,60 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
   /// 설정 로딩 중(null)엔 깜빡임 방지를 위해 '봤음'으로 간주(표시 안 함).
   bool get _coachSeen =>
       ref.watch(appSettingsProvider).value?.captureCoachSeen ?? true;
+
+  /// 프리뷰를 화면에 cover로 채운다(레터박스 제거 → 오버레이/저장본과 크롭 일치).
+  Widget _coverPreview() {
+    final c = _camera.controller!;
+    final media = MediaQuery.of(context).size;
+    var scale = c.value.aspectRatio * (media.width / media.height);
+    if (scale < 1) scale = 1 / scale;
+    return ClipRect(
+      child: Transform.scale(
+        scale: scale,
+        alignment: Alignment.center,
+        child: Center(child: CameraPreview(c)),
+      ),
+    );
+  }
+
+  Widget _focusIndicator() {
+    return Positioned(
+      left: _focusPoint!.dx - 28,
+      top: _focusPoint!.dy - 28,
+      child: IgnorePointer(
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _zoomPill() {
+    return Positioned(
+      bottom: 150,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text('${_camera.zoom.toStringAsFixed(1)}x',
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700)),
+          ),
+        ),
+      ),
+    );
+  }
 
   /// 카운트다운 오버레이 — 큰 숫자 + "탭하면 취소". 숫자 영역 탭으로 취소 가능
   /// (상단 닫기/하단 컨트롤은 위에 렌더되어 그대로 동작).
@@ -335,10 +452,26 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
             child: Text(
               widget.project.title,
               textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                   color: Colors.white, fontWeight: FontWeight.w600),
             ),
           ),
+          // 플래시.
+          IconButton(
+            tooltip: '플래시',
+            icon: Icon(_flashIcon(), color: Colors.white),
+            onPressed: _busy ? null : _cycleFlash,
+          ),
+          // 전/후면 전환.
+          if (_camera.hasFrontAndBack)
+            IconButton(
+              tooltip: '카메라 전환',
+              icon: const Icon(Icons.cameraswitch_outlined, color: Colors.white),
+              onPressed: _busy ? null : _switchLens,
+            ),
+          // 오버레이 켜기/끄기.
           if (_hasReference)
             IconButton(
               tooltip: '오버레이 켜기/끄기',
@@ -347,13 +480,17 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
                 color: Colors.white,
               ),
               onPressed: () => setState(() => _showOverlay = !_showOverlay),
-            )
-          else
-            const SizedBox(width: 48),
+            ),
         ],
       ),
     );
   }
+
+  IconData _flashIcon() => switch (_flash) {
+        FlashMode.always => Icons.flash_on,
+        FlashMode.auto => Icons.flash_auto,
+        _ => Icons.flash_off,
+      };
 
   Widget _bottomControls() {
     return Positioned(

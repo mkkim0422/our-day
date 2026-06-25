@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:gal/gal.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/utils/age_label.dart';
@@ -49,25 +50,50 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
     super.dispose();
   }
 
+  /// 폰트 로드 후 꾸민 카드를 PNG로 캡처(원본 사진은 건드리지 않음).
+  Future<String> _capture() async {
+    await GoogleFonts.pendingFonts([GoogleFonts.getFont(_skin.font)]);
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    return ref.read(shareServiceProvider).captureBoundaryToPng(_boundaryKey,
+        pixelRatio: 3);
+  }
+
   Future<void> _share() async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      // 구글폰트가 로드된 뒤 캡처해야 폴백 폰트로 찍히지 않는다.
-      await GoogleFonts.pendingFonts([GoogleFonts.getFont(_skin.font)]);
-      await Future<void>.delayed(const Duration(milliseconds: 60));
-      final share = ref.read(shareServiceProvider);
-      final path =
-          await share.captureBoundaryToPng(_boundaryKey, pixelRatio: 3);
-      await share.shareFiles([path], text: '그날 우리 · 우리만의 한 컷');
+      final path = await _capture();
+      await ref.read(shareServiceProvider).shareFiles([path],
+          text: '그날 우리 · 우리만의 한 컷');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('내보내기 실패: $e')));
-      }
+      _snack('내보내기 실패: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// 갤러리에 저장 — **원본은 타임라인에 그대로 보존**, 꾸민 사진만 사진앱에 추가.
+  Future<void> _saveToGallery() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final path = await _capture();
+      if (!await Gal.hasAccess()) await Gal.requestAccess();
+      await Gal.putImage(path, album: '그날 우리');
+      _snack('갤러리에 저장했어요. 원본은 타임라인에 그대로 있어요.');
+    } on GalException catch (e) {
+      _snack('저장 실패: ${e.type.message}');
+    } catch (e) {
+      _snack('저장 실패: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
@@ -203,6 +229,27 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
                   separatorBuilder: (_, _) => const SizedBox(width: 10),
                   itemBuilder: (_, i) => _skinThumb(skins[i], scheme),
                 ),
+              ),
+              const SizedBox(height: 12),
+              // 저장(갤러리) + 공유. 원본은 타임라인에 그대로 보존.
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _busy ? null : _saveToGallery,
+                      icon: const Icon(Icons.download_rounded),
+                      label: const Text('저장'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _busy ? null : _share,
+                      icon: const Icon(Icons.ios_share),
+                      label: const Text('공유'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
