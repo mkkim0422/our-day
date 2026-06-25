@@ -14,6 +14,7 @@ class AppSettingsData {
     this.sampleSeeded = false,
     this.showcaseSeen = false,
     this.captureCoachSeen = false,
+    this.lockPinHash,
   });
 
   final bool locationRecallEnabled;
@@ -34,6 +35,11 @@ class AppSettingsData {
   /// 촬영 화면의 오버레이(반투명 겹침) 설명 코치를 이미 봤는지.
   final bool captureCoachSeen;
 
+  /// 앱 잠금 PIN의 해시(null이면 잠금 꺼짐). 평문은 저장하지 않는다.
+  final String? lockPinHash;
+
+  bool get appLockEnabled => lockPinHash != null;
+
   AppSettingsData copyWith({
     bool? locationRecallEnabled,
     Map<String, DateTime>? placeLastNotified,
@@ -42,6 +48,8 @@ class AppSettingsData {
     bool? sampleSeeded,
     bool? showcaseSeen,
     bool? captureCoachSeen,
+    String? lockPinHash,
+    bool clearLockPin = false,
   }) =>
       AppSettingsData(
         locationRecallEnabled:
@@ -52,6 +60,7 @@ class AppSettingsData {
         sampleSeeded: sampleSeeded ?? this.sampleSeeded,
         showcaseSeen: showcaseSeen ?? this.showcaseSeen,
         captureCoachSeen: captureCoachSeen ?? this.captureCoachSeen,
+        lockPinHash: clearLockPin ? null : (lockPinHash ?? this.lockPinHash),
       );
 
   Map<String, dynamic> toJson() => {
@@ -64,6 +73,7 @@ class AppSettingsData {
         'sampleSeeded': sampleSeeded,
         'showcaseSeen': showcaseSeen,
         'captureCoachSeen': captureCoachSeen,
+        'lockPinHash': lockPinHash,
       };
 
   factory AppSettingsData.fromJson(Map<String, dynamic> json) {
@@ -92,6 +102,7 @@ class AppSettingsData {
       sampleSeeded: json['sampleSeeded'] as bool? ?? false,
       showcaseSeen: json['showcaseSeen'] as bool? ?? false,
       captureCoachSeen: json['captureCoachSeen'] as bool? ?? false,
+      lockPinHash: json['lockPinHash'] as String?,
     );
   }
 }

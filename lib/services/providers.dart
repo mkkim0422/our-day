@@ -109,6 +109,16 @@ class AppSettingsController extends AsyncNotifier<AppSettingsData> {
     state = AsyncData(next);
   }
 
+  /// 앱 잠금 PIN 해시 설정(null이면 잠금 해제).
+  Future<void> setLockPin(String? pinHash) async {
+    final current = state.value ?? const AppSettingsData();
+    final next = pinHash == null
+        ? current.copyWith(clearLockPin: true)
+        : current.copyWith(lockPinHash: pinHash);
+    await _store?.save(next);
+    state = AsyncData(next);
+  }
+
   /// 촬영별 키(cm) 기록 설정/해제(아이디어8 — 성장 차트).
   Future<void> setCaptureHeight(String captureId, double? cm) async {
     final current = state.value ?? const AppSettingsData();

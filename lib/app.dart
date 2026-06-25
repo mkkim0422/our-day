@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'core/theme/app_theme.dart';
 import 'features/intro/intro_screen.dart';
+import 'features/settings/app_lock.dart';
 
 /// 앱 루트 위젯.
 ///
@@ -19,7 +20,8 @@ class OurDayApp extends StatelessWidget {
       darkTheme: AppTheme.dark(),
       // 따뜻한 파스텔 감성이 앱 정체성이라 라이트로 고정(다크모드 폰의 검정 배경 방지).
       themeMode: ThemeMode.light,
-      home: const IntroScreen(),
+      // 앱 잠금이 켜져 있으면 PIN 해제 후 진입(콜드스타트마다).
+      home: const LockGate(child: IntroScreen()),
     );
   }
 }

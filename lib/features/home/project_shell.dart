@@ -5,7 +5,7 @@ import '../../data/db/app_database.dart';
 import '../capture/backfill_screen.dart';
 import '../capture/capture_screen.dart';
 import '../compare/compare_screen.dart';
-import '../settings/settings_screen.dart';
+import '../settings/album_settings_screen.dart';
 import 'album_tab.dart';
 import 'home_providers.dart';
 import 'home_screen.dart';
@@ -63,10 +63,10 @@ class _ProjectShellState extends ConsumerState<ProjectShell>
             ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
-            tooltip: '설정',
+            tooltip: '앨범 설정',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(
-                  builder: (_) => SettingsScreen(project: project)),
+                  builder: (_) => AlbumSettingsScreen(project: project)),
             ),
           ),
         ],
