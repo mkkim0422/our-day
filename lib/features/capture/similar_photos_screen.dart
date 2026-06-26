@@ -161,8 +161,15 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
           children: [
             const CircularProgressIndicator(),
             const SizedBox(height: 16),
-            Text('갤러리에서 비슷한 사진을 찾는 중… ${(_progress * 100).round()}%',
-                style: TextStyle(color: scheme.onSurfaceVariant)),
+            Text(
+                _progress < 0.4
+                    ? '갤러리에서 비슷한 사진을 찾는 중…'
+                    : '사람(얼굴)을 분석하는 중…',
+                style: TextStyle(
+                    color: scheme.onSurface, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text('${(_progress * 100).round()}%  ·  잠시만 기다려 주세요',
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
           ],
         ),
       );

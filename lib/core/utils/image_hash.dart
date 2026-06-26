@@ -27,16 +27,20 @@ class ImageHash {
   static int? ofBytes(Uint8List bytes) {
     final decoded = img.decodeImage(bytes);
     if (decoded == null) return null;
-    return _dhashOf(decoded);
+    return _dhashOf(img.bakeOrientation(decoded));
   }
 
   /// 바이트 → 구조+컬러 시그니처. 디코딩 실패 시 null. (한 번만 디코딩)
+  ///
+  /// EXIF 회전을 먼저 적용(bakeOrientation)해 원본 세로 사진과 이미 회전 적용된
+  /// 썸네일이 같은 방향으로 비교되도록 한다 — 안 하면 구도가 어긋나 오매칭.
   static PhotoSignature? signatureOf(Uint8List bytes) {
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) return null;
+    final raw = img.decodeImage(bytes);
+    if (raw == null) return null;
+    final decoded = img.bakeOrientation(raw);
     final dhash = _dhashOf(decoded);
     final blocks = img.copyResize(decoded,
-        width: 4, height: 4, interpolation: img.Interpolation.average);
+        width: 4, height: 4, interpolation: img.Interpolation.linear);
     final color = Uint8List(48);
     var k = 0;
     for (var y = 0; y < 4; y++) {
@@ -53,7 +57,7 @@ class ImageHash {
   /// 9x8 그레이스케일로 줄여 가로 인접 픽셀의 밝기 증감을 비트로.
   static int _dhashOf(img.Image src) {
     final small = img.copyResize(src,
-        width: 9, height: 8, interpolation: img.Interpolation.average);
+        width: 9, height: 8, interpolation: img.Interpolation.linear);
     final gray = img.grayscale(small);
     var hash = 0;
     var bit = 0;
