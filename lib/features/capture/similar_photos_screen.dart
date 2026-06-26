@@ -17,12 +17,16 @@ class SimilarPhotosScreen extends ConsumerStatefulWidget {
     super.key,
     required this.project,
     required this.referencePath,
+    this.limitedAccess = false,
   });
 
   final Project project;
 
   /// 기준 사진 경로(이 사진과 비슷한 걸 찾는다).
   final String referencePath;
+
+  /// '일부 사진만 허용' 상태 — 결과 위에 전체 허용 안내 배너를 띄운다.
+  final bool limitedAccess;
 
   @override
   ConsumerState<SimilarPhotosScreen> createState() =>
@@ -199,9 +203,13 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
       return _info(Icons.search_off, '비슷한 자세의 사진을 찾지 못했어요',
           '인물의 자세가 또렷하게 나온 사진을 기준으로 다시 시도하거나,\n직접 골라서 채워보세요.');
     }
-    return GridView.builder(
-      padding: const EdgeInsets.all(12),
-      itemCount: _matches.length,
+    return Column(
+      children: [
+        if (widget.limitedAccess) _limitedBanner(),
+        Expanded(
+          child: GridView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: _matches.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         crossAxisSpacing: 8,
@@ -252,6 +260,40 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
           ),
         );
       },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// '일부 사진만 허용' 안내 배너 — 탭하면 설정으로 이동해 전체 허용.
+  Widget _limitedBanner() {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.secondaryContainer,
+      child: InkWell(
+        onTap: PhotoManager.openSetting,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline,
+                  size: 20, color: scheme.onSecondaryContainer),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '일부 사진만 허용되어 있어요. 더 많은 결과를 보려면 ‘모든 사진’을 허용하세요.',
+                  style: TextStyle(
+                      color: scheme.onSecondaryContainer, fontSize: 13),
+                ),
+              ),
+              Text('설정',
+                  style: TextStyle(
+                      color: scheme.primary, fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
