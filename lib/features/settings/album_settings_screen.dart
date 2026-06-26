@@ -41,7 +41,7 @@ class _AlbumSettingsScreenState extends ConsumerState<AlbumSettingsScreen> {
           ListTile(
             leading: const Icon(Icons.tune),
             title: const Text('앱 설정'),
-            subtitle: const Text('백업 안내·위치 회상·앱 잠금 등 전체 설정'),
+            subtitle: const Text('위치 회상·앱 잠금·정보 등 전체 설정'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const SettingsScreen()),

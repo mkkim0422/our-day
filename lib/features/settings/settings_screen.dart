@@ -57,6 +57,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onTap: _changePin,
             ),
           const Divider(height: 32),
+          _sectionTitle('데이터'),
+          const ListTile(
+            leading: Icon(Icons.shield_outlined),
+            title: Text('사진은 이 기기에 안전하게 저장돼요'),
+            subtitle: Text('자체 서버에 올리지 않아요. 클라우드 자동 백업은 준비 중이에요.'),
+          ),
+          const Divider(height: 32),
           _sectionTitle('정보'),
           ListTile(
             leading: const Icon(Icons.privacy_tip_outlined),

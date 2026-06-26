@@ -56,32 +56,47 @@ class AlbumHubScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 24),
           ],
-          Text('이어서 보기',
-              style: text.titleSmall?.copyWith(color: scheme.onSurfaceVariant)),
-          const SizedBox(height: 10),
-          _HeroProjectCard(
-            project: hero,
-            onTap: () => _open(context, ref, hero),
-          ),
-          const SizedBox(height: 24),
-          Text('모든 기록', style: text.titleMedium),
-          const SizedBox(height: 12),
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 0.82,
-            children: [
-              for (final p in rest)
-                _ProjectGridCard(
-                  project: p,
-                  onTap: () => _open(context, ref, p),
-                ),
-              _AddProjectTile(onTap: () => _create(context, ref)),
-            ],
-          ),
+          if (rest.isEmpty) ...[
+            // 앨범이 하나뿐일 땐 이중 섹션 없이 큰 카드 + 새 기록만(혼란 방지).
+            _HeroProjectCard(
+              project: hero,
+              onTap: () => _open(context, ref, hero),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: () => _create(context, ref),
+              icon: const Icon(Icons.add),
+              label: const Text('새 기록 만들기'),
+            ),
+          ] else ...[
+            Text('이어서 보기',
+                style:
+                    text.titleSmall?.copyWith(color: scheme.onSurfaceVariant)),
+            const SizedBox(height: 10),
+            _HeroProjectCard(
+              project: hero,
+              onTap: () => _open(context, ref, hero),
+            ),
+            const SizedBox(height: 24),
+            Text('모든 기록', style: text.titleMedium),
+            const SizedBox(height: 12),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 0.82,
+              children: [
+                for (final p in rest)
+                  _ProjectGridCard(
+                    project: p,
+                    onTap: () => _open(context, ref, p),
+                  ),
+                _AddProjectTile(onTap: () => _create(context, ref)),
+              ],
+            ),
+          ],
         ],
       ),
     );

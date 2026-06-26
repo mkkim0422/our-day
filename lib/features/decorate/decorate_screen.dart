@@ -219,21 +219,7 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
     final skins = skinsForCategory(_category);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('꾸미기'),
-        actions: [
-          IconButton(
-            icon: _busy
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.ios_share),
-            tooltip: '공유 · 저장',
-            onPressed: _busy ? null : _share,
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('꾸미기')),
       body: Column(
         children: [
           Expanded(
@@ -344,47 +330,74 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
                     ],
                   ),
                 ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  _toggle('날짜', _showDate, (v) => setState(() => _showDate = v)),
-                  if (ageText != null)
-                    _toggle('나이', _showAge, (v) => setState(() => _showAge = v)),
-                  if (heightText != null)
-                    _toggle('키', _showHeight,
-                        (v) => setState(() => _showHeight = v)),
-                  // 글자 크기.
-                  _toggle('글자 작게', _captionScale == 0.8,
-                      (_) => setState(() => _captionScale = 0.8)),
-                  _toggle('보통', _captionScale == 1.0,
-                      (_) => setState(() => _captionScale = 1.0)),
-                  _toggle('크게', _captionScale == 1.25,
-                      (_) => setState(() => _captionScale = 1.25)),
-                ],
-              ),
-              const SizedBox(height: 6),
-              // 필터 세기.
-              Row(
-                children: [
-                  const Icon(Icons.tune, size: 18),
-                  const SizedBox(width: 4),
-                  const Text('필터', style: TextStyle(fontSize: 12)),
-                  Expanded(
-                    child: Slider(
-                      value: _filterStrength,
-                      onChanged: (v) => setState(() => _filterStrength = v),
+              const SizedBox(height: 2),
+              // 부가 옵션은 접어서 첫 인지부하를 낮춤(스킨 선택 + 저장이 우선).
+              Theme(
+                data: Theme.of(context)
+                    .copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(bottom: 6),
+                  title: const Text('표시 · 글자 · 필터'),
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          _toggle('날짜', _showDate,
+                              (v) => setState(() => _showDate = v)),
+                          if (ageText != null)
+                            _toggle('나이', _showAge,
+                                (v) => setState(() => _showAge = v)),
+                          if (heightText != null)
+                            _toggle('키', _showHeight,
+                                (v) => setState(() => _showHeight = v)),
+                        ],
+                      ),
                     ),
-                  ),
-                  SizedBox(
-                    width: 36,
-                    child: Text('${(_filterStrength * 100).round()}%',
-                        textAlign: TextAlign.right,
-                        style: const TextStyle(fontSize: 12)),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Text('글자 크기', style: TextStyle(fontSize: 13)),
+                        const Spacer(),
+                        SegmentedButton<double>(
+                          showSelectedIcon: false,
+                          segments: const [
+                            ButtonSegment(value: 0.8, label: Text('작게')),
+                            ButtonSegment(value: 1.0, label: Text('보통')),
+                            ButtonSegment(value: 1.25, label: Text('크게')),
+                          ],
+                          selected: {_captionScale},
+                          onSelectionChanged: (s) =>
+                              setState(() => _captionScale = s.first),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.tune, size: 18),
+                        const SizedBox(width: 4),
+                        const Text('필터', style: TextStyle(fontSize: 13)),
+                        Expanded(
+                          child: Slider(
+                            value: _filterStrength,
+                            onChanged: (v) =>
+                                setState(() => _filterStrength = v),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 36,
+                          child: Text('${(_filterStrength * 100).round()}%',
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 6),
               // 카테고리 탭.
