@@ -209,9 +209,16 @@ class _BackfillScreenState extends ConsumerState<BackfillScreen> {
     );
   }
 
-  /// 기준 사진 한 장을 고르면, 갤러리에서 비슷한(같은 포즈·장소) 사진을 찾아 보여준다.
+  /// 기준 사진 한 장을 고르면, 갤러리에서 비슷한 자세(포즈) 사진을 찾아 보여준다.
+  ///
+  /// maxWidth/imageQuality 지정 → image_picker가 원본을 **JPEG로 재인코딩**한다.
+  /// (갤럭시 기본 HEIC 등 Dart image 패키지가 못 푸는 포맷이어도 안전하게 디코딩)
   Future<void> _findSimilar() async {
-    final refImg = await _picker.pickImage(source: ImageSource.gallery);
+    final refImg = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1600,
+      imageQuality: 92,
+    );
     if (refImg == null || !mounted) return;
     final added = await Navigator.of(context).push<int>(
       MaterialPageRoute(

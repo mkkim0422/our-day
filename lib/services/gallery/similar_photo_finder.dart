@@ -67,7 +67,6 @@ class SimilarPhotoFinder {
     int posePool = 150, // 포즈 모드에서 포즈 검출할 시각 상위 후보 수
     int topN = 60,
     double minVisual = 0.5, // 포즈 없을 때 시각 하한
-    double minPose = 0.5, // 포즈 모드에서 자세 유사도 하한
     void Function(double progress)? onProgress,
   }) async {
     final refSig = ImageHash.signatureOf(refBytes);
@@ -121,27 +120,31 @@ class SimilarPhotoFinder {
       }
 
       // ── 2단계: 포즈 검출 + 자세 유사도 재랭킹 ──
+      // 중요: 포즈를 못 잡은 후보도 **탈락이 아니라 데모트**(시각 점수로 살림).
+      // 그래야 포즈 검출이 흔들려도 "거의 똑같은 사진"(시각 유사도 높음)은 반드시
+      // 노출된다. 포즈가 잡히면 자세 유사도로 크게 끌어올린다.
       final pool = scored.take(posePool).toList();
       final matches = <SimilarMatch>[];
       for (var i = 0; i < pool.length; i++) {
+        final v = pool[i].visual;
+        double score;
         final Uint8List? bytes = await pool[i]
             .asset
-            .thumbnailDataWithSize(const ThumbnailSize(384, 384));
-        if (bytes != null) {
-          final cand = await _detectPose(detector, bytes);
-          if (cand != null && cand.length >= 3) {
-            final poseSim = _poseSimilarity(refPose, cand);
-            if (poseSim >= minPose) {
-              // 자세 80% + 시각 20%.
-              final score =
-                  (0.8 * poseSim + 0.2 * pool[i].visual).clamp(0.0, 1.0);
-              matches.add(SimilarMatch(pool[i].asset, score));
-            }
-          }
+            .thumbnailDataWithSize(const ThumbnailSize(512, 512));
+        final cand =
+            bytes == null ? null : await _detectPose(detector, bytes);
+        if (cand != null && cand.length >= 3) {
+          final poseSim = _poseSimilarity(refPose, cand);
+          score = (0.6 * poseSim + 0.4 * v).clamp(0.0, 1.0); // 자세 60% + 시각 40%
+        } else {
+          score = 0.5 * v; // 포즈 미검출 → 데모트(시각만)
         }
+        matches.add(SimilarMatch(pool[i].asset, score));
         onProgress?.call(0.4 + 0.6 * (i + 1) / pool.length);
       }
-      matches.sort((a, b) => b.similarity.compareTo(a.similarity));
+      matches
+        ..removeWhere((m) => m.similarity < 0.4)
+        ..sort((a, b) => b.similarity.compareTo(a.similarity));
       onProgress?.call(1);
       return matches.length > topN ? matches.sublist(0, topN) : matches;
     } finally {
