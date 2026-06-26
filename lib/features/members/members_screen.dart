@@ -55,7 +55,8 @@ class MembersScreen extends ConsumerWidget {
               for (final m in members)
                 ListTile(
                   leading: CircleAvatar(
-                    child: Text(m.name.isNotEmpty ? m.name.characters.first : '?'),
+                    child: Text(
+                        m.name.characters.isEmpty ? '?' : m.name.characters.first),
                   ),
                   title: Text(m.name),
                   subtitle: m.role != null ? Text(m.role!) : null,

@@ -41,7 +41,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
     ),
     (
       '문의',
-      '개인정보 관련 문의는 help@sphinfo.co.kr 로 연락 주세요.',
+      '개인정보 관련 문의는 mkkim850422@gmail.com 로 연락 주세요.',
     ),
   ];
 

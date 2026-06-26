@@ -51,12 +51,25 @@ class TimelapseService {
       throw ArgumentError('타임랩스는 최소 2장이 필요합니다. (현재 ${frames.length}장)');
     }
 
+    // 메모리 보호: 프레임이 매우 많으면 균등 샘플링(첫·마지막 포함)으로 상한.
+    // 애니메이션 GIF는 전 프레임을 메모리에 들고 있어 100장+면 OOM 위험.
+    const maxFrames = 60;
+    final List<TimelapseFrame> used;
+    if (frames.length > maxFrames) {
+      used = [
+        for (var i = 0; i < maxFrames; i++)
+          frames[(i * (frames.length - 1) / (maxFrames - 1)).round()]
+      ];
+    } else {
+      used = frames;
+    }
+
     final dir = await getApplicationDocumentsDirectory();
     final exportsDir = Directory(p.join(dir.path, 'exports'));
     if (!exportsDir.existsSync()) exportsDir.createSync(recursive: true);
-    final outPath = p.join(exportsDir.path, 'timelapse_${frames.length}.gif');
+    final outPath = p.join(exportsDir.path, 'timelapse_${used.length}.gif');
 
-    final specs = frames
+    final specs = used
         .map((f) => _FrameSpec(
               path: f.imagePath,
               dx: f.align.dx,

@@ -86,7 +86,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.mail_outline),
             title: const Text('문의'),
-            subtitle: const Text('help@sphinfo.co.kr'),
+            subtitle: const Text('mkkim850422@gmail.com'),
           ),
           ListTile(
             leading: const Icon(Icons.info_outline),

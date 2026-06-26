@@ -178,7 +178,10 @@ class _MemoryCard extends StatelessWidget {
                     width: 60,
                     height: 60,
                     child: img.existsSync()
-                        ? Image.file(img, fit: BoxFit.cover)
+                        ? Image.file(img,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) =>
+                                const ColoredBox(color: Colors.white24))
                         : const ColoredBox(color: Colors.white24),
                   ),
                 ),
@@ -370,7 +373,11 @@ class _CoverImage extends StatelessWidget {
     final p = path;
     if (p != null) {
       final file = File(p);
-      if (file.existsSync()) return Image.file(file, fit: BoxFit.cover);
+      if (file.existsSync()) {
+        return Image.file(file,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => const _PlaceholderCover());
+      }
     }
     return const _PlaceholderCover();
   }

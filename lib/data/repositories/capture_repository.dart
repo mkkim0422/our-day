@@ -104,8 +104,13 @@ class CaptureRepository {
             placeId: Value(placeId),
           ),
         );
-    return (_db.select(_db.captures)..where((c) => c.id.equals(id)))
-        .getSingle();
+    final created = await (_db.select(_db.captures)
+          ..where((c) => c.id.equals(id)))
+        .getSingleOrNull();
+    if (created == null) {
+      throw StateError('방금 저장한 기록을 불러오지 못했습니다.');
+    }
+    return created;
   }
 
   Future<void> updateAlignment(String id, Map<String, dynamic> meta) {

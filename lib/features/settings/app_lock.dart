@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
@@ -53,8 +54,19 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   String _pin = '';
   bool _error = false;
 
+  // 무차별 입력 방지: 5회 연속 실패하면 잠시 입력을 막는다(쿨다운, 점증).
+  int _fails = 0;
+  int _cooldown = 0; // 남은 초(0이면 입력 가능)
+  Timer? _tick;
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
   void _onDigit(String d) {
-    if (_pin.length >= 4) return;
+    if (_cooldown > 0 || _pin.length >= 4) return;
     setState(() {
       _pin += d;
       _error = false;
@@ -63,24 +75,44 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   }
 
   void _onBack() {
-    if (_pin.isEmpty) return;
+    if (_cooldown > 0 || _pin.isEmpty) return;
     setState(() => _pin = _pin.substring(0, _pin.length - 1));
   }
 
   void _verify() {
     if (hashPin(_pin) == widget.expectedHash) {
       ref.read(appUnlockedProvider.notifier).unlock();
-    } else {
-      setState(() {
-        _error = true;
-        _pin = '';
-      });
+      return;
     }
+    _fails++;
+    setState(() {
+      _error = true;
+      _pin = '';
+    });
+    if (_fails >= 5) _startCooldown();
+  }
+
+  void _startCooldown() {
+    setState(() => _cooldown = 30);
+    _tick?.cancel();
+    _tick = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() => _cooldown--);
+      if (_cooldown <= 0) {
+        t.cancel();
+        // 쿨다운이 끝나면 실패 카운트를 리셋해 다시 5회 기회를 준다(영구 잠김 방지).
+        setState(() => _fails = 0);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final locked = _cooldown > 0;
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -91,13 +123,24 @@ class _LockScreenState extends ConsumerState<LockScreen> {
             Text('PIN을 입력하세요',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 6),
-            Text(_error ? 'PIN이 일치하지 않아요' : '앨범을 보호하고 있어요',
+            Text(
+                locked
+                    ? '입력이 많아요. $_cooldown초 후 다시 시도해 주세요'
+                    : (_error ? 'PIN이 일치하지 않아요' : '앨범을 보호하고 있어요'),
                 style: TextStyle(
-                    color: _error ? scheme.error : scheme.onSurfaceVariant)),
+                    color: (_error || locked)
+                        ? scheme.error
+                        : scheme.onSurfaceVariant)),
             const SizedBox(height: 24),
             PinDots(length: _pin.length, error: _error),
             const Spacer(),
-            PinPad(onDigit: _onDigit, onBack: _onBack),
+            Opacity(
+              opacity: locked ? 0.4 : 1,
+              child: IgnorePointer(
+                ignoring: locked,
+                child: PinPad(onDigit: _onDigit, onBack: _onBack),
+              ),
+            ),
             const Spacer(flex: 2),
           ],
         ),

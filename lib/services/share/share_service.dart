@@ -19,9 +19,15 @@ class ShareService {
 
   /// 파일들을 OS 공유 시트로 공유(단톡방·SNS 등).
   Future<ShareResult> shareFiles(List<String> paths, {String? text}) {
+    // 존재하지 않는 경로는 제외(쓰기 실패/삭제 레이스 시 공유 오류 방지).
+    final existing =
+        paths.where((path) => File(path).existsSync()).toList();
+    if (existing.isEmpty) {
+      throw StateError('공유할 파일이 없습니다.');
+    }
     return SharePlus.instance.share(
       ShareParams(
-        files: paths.map((path) => XFile(path)).toList(),
+        files: existing.map((path) => XFile(path)).toList(),
         text: text,
       ),
     );
@@ -39,8 +45,11 @@ class ShareService {
     if (context == null) {
       throw StateError('캡처할 위젯이 아직 렌더링되지 않았습니다.');
     }
-    final boundary = context.findRenderObject() as RenderRepaintBoundary;
-    final image = await boundary.toImage(pixelRatio: pixelRatio);
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderRepaintBoundary) {
+      throw StateError('캡처할 위젯을 찾지 못했습니다.');
+    }
+    final image = await renderObject.toImage(pixelRatio: pixelRatio);
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     if (byteData == null) {
       throw StateError('이미지 인코딩에 실패했습니다.');

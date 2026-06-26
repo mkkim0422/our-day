@@ -20,23 +20,23 @@ class SimilarMatch {
   final double similarity; // 0~1
 }
 
-/// compute()로 백그라운드 아이솔레이트에 넘길 입력.
-class _RecallInput {
-  const _RecallInput(this.refBytes, this.thumbs);
-  final Uint8List refBytes;
+/// compute()로 아이솔레이트에 넘길 청크 입력(기준 시그니처 + 후보 썸네일들).
+class _ChunkInput {
+  const _ChunkInput(this.refSig, this.thumbs);
+  final PhotoSignature refSig;
   final List<Uint8List> thumbs;
 }
 
-/// 백그라운드 아이솔레이트에서 기준 시그니처 대비 후보 시각 유사도를 일괄 계산.
-/// 메인 스레드를 막지 않도록 무거운 디코딩/해시를 여기서 처리한다.
-/// 기준 디코딩 실패 시 빈 리스트, 개별 후보 디코딩 실패는 -1.
-List<double> _recallScores(_RecallInput input) {
-  final refSig = ImageHash.signatureOf(input.refBytes);
-  if (refSig == null) return const <double>[];
+/// 아이솔레이트: 기준 사진 바이트 → 시그니처(무거운 디코딩 1회). 실패 시 null.
+PhotoSignature? _decodeRefSig(Uint8List bytes) => ImageHash.signatureOf(bytes);
+
+/// 아이솔레이트: 후보 썸네일 청크의 시각 유사도(디코딩 실패는 -1).
+/// 무거운 디코딩/해시를 메인 스레드 밖에서, 청크로 나눠 처리해 화면이 멈추지 않게.
+List<double> _chunkScores(_ChunkInput input) {
   final out = <double>[];
   for (final t in input.thumbs) {
     final s = ImageHash.signatureOf(t);
-    out.add(s == null ? -1.0 : ImageHash.signatureSimilarity(refSig, s));
+    out.add(s == null ? -1.0 : ImageHash.signatureSimilarity(input.refSig, s));
   }
   return out;
 }
@@ -97,8 +97,8 @@ class SimilarPhotoFinder {
   /// [onProgress]는 0~1. 포즈 모드일 땐 0~0.4 recall + 0.4~1 포즈 분석.
   Future<List<SimilarMatch>> findSimilar(
     Uint8List refBytes, {
-    int scanLimit = 600,
-    int posePool = 100, // 포즈 모드에서 포즈 검출할 시각 상위 후보 수(대기시간 고려)
+    int scanLimit = 300,
+    int posePool = 60, // 포즈 모드에서 포즈 검출할 시각 상위 후보 수(대기시간 고려)
     int topN = 60,
     double minVisual = 0.5, // 포즈 없을 때 시각 하한
     void Function(double progress)? onProgress,
@@ -125,34 +125,49 @@ class SimilarPhotoFinder {
       final assets = await all.getAssetListRange(start: 0, end: count);
 
       // ── 1단계 recall ──
-      // 썸네일 수집만 메인에서(플랫폼 채널). 무거운 이미지 디코딩/시그니처 계산은
-      // **백그라운드 아이솔레이트(compute)** 로 — 안 그러면 수백 장 동기 디코딩이
-      // UI 스레드를 막아 화면이 0%에서 멈춘다(프리징).
+      // 핵심: 진행률이 멈춰 보이지 않도록 (a) 썸네일을 동시에 batch로 수집하고
+      // (b) 무거운 디코딩/시그니처 계산은 아이솔레이트에서 **청크로 나눠** 처리해
+      // 매 청크마다 진행률을 갱신한다(한 번의 거대한 compute로 멈춰 보이던 문제 해결).
       final recallSpan = poseMode ? 0.4 : 1.0;
+
+      // 기준 시그니처는 한 번만 디코딩(아이솔레이트).
+      final refSig = await compute(_decodeRefSig, refBytes);
+      if (refSig == null) return const []; // 기준 사진 디코딩 실패.
+
+      // (a) 썸네일 동시 수집 — 진행률 0 ~ recallSpan*0.5.
       final keptAssets = <AssetEntity>[];
       final thumbs = <Uint8List>[];
-      for (var i = 0; i < assets.length; i++) {
-        final Uint8List? thumb =
-            await assets[i].thumbnailDataWithSize(_fitSize(assets[i], 100));
-        if (thumb != null) {
-          keptAssets.add(assets[i]);
-          thumbs.add(thumb);
+      const fetchBatch = 16;
+      for (var start = 0; start < assets.length; start += fetchBatch) {
+        final end = math.min(start + fetchBatch, assets.length);
+        final results = await Future.wait(assets
+            .sublist(start, end)
+            .map((a) => a.thumbnailDataWithSize(_fitSize(a, 100))));
+        for (var k = 0; k < results.length; k++) {
+          final t = results[k];
+          if (t != null) {
+            keptAssets.add(assets[start + k]);
+            thumbs.add(t);
+          }
         }
-        if (i % 8 == 0) {
-          onProgress?.call(recallSpan * 0.6 * (i + 1) / assets.length);
-        }
+        onProgress?.call(recallSpan * 0.5 * end / assets.length);
       }
       if (thumbs.isEmpty) return const [];
-      final rawScores =
-          await compute(_recallScores, _RecallInput(refBytes, thumbs));
-      if (rawScores.isEmpty) return const []; // 기준 사진 디코딩 실패.
+
+      // (b) 디코딩/시그니처 비교 — 청크 단위 아이솔레이트, 진행률 recallSpan*0.5 ~ recallSpan.
       final scored = <_Scored>[];
-      for (var j = 0; j < keptAssets.length; j++) {
-        if (rawScores[j] >= 0) {
-          scored.add(_Scored(keptAssets[j], rawScores[j]));
+      const scoreChunk = 60;
+      for (var start = 0; start < thumbs.length; start += scoreChunk) {
+        final end = math.min(start + scoreChunk, thumbs.length);
+        final scores = await compute(
+            _chunkScores, _ChunkInput(refSig, thumbs.sublist(start, end)));
+        for (var k = 0; k < scores.length; k++) {
+          if (scores[k] >= 0) {
+            scored.add(_Scored(keptAssets[start + k], scores[k]));
+          }
         }
+        onProgress?.call(recallSpan * (0.5 + 0.5 * end / thumbs.length));
       }
-      onProgress?.call(recallSpan);
       scored.sort((a, b) => b.visual.compareTo(a.visual));
 
       // 포즈가 없는 기준: 시각 유사도로만.
