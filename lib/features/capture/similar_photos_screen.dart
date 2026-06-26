@@ -36,6 +36,7 @@ class SimilarPhotosScreen extends ConsumerStatefulWidget {
 class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
   bool _loading = true;
   bool _denied = false;
+  bool _failed = false;
   double _progress = 0;
   List<SimilarMatch> _matches = const [];
   final Set<String> _selected = {};
@@ -50,29 +51,42 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
   Future<void> _scan() async {
     final finder = ref.read(similarPhotoFinderProvider);
     if (!await finder.ensurePermission()) {
-      setState(() {
-        _loading = false;
-        _denied = true;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _denied = true;
+        });
+      }
       return;
     }
     final refFile = File(widget.referencePath);
     if (!refFile.existsSync()) {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
       return;
     }
-    final refBytes = refFile.readAsBytesSync();
-    final matches = await finder.findSimilar(
-      refBytes,
-      onProgress: (p) {
-        if (mounted) setState(() => _progress = p);
-      },
-    );
-    if (mounted) {
-      setState(() {
-        _matches = matches;
-        _loading = false;
-      });
+    try {
+      final refBytes = refFile.readAsBytesSync();
+      final matches = await finder.findSimilar(
+        refBytes,
+        onProgress: (p) {
+          if (mounted) setState(() => _progress = p);
+        },
+      );
+      if (mounted) {
+        setState(() {
+          _matches = matches;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      // 어떤 단계가 실패해도 무한 스피너에 갇히지 않게 — 안내 후 종료.
+      debugPrint('[similar] scan error: $e');
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _failed = true;
+        });
+      }
     }
   }
 
@@ -176,6 +190,24 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
         action: FilledButton(
           onPressed: PhotoManager.openSetting,
           child: const Text('설정 열기'),
+        ),
+      );
+    }
+    if (_failed) {
+      return _info(
+        Icons.error_outline,
+        '검색을 끝내지 못했어요',
+        '잠시 후 다시 시도하거나, 다른 기준 사진으로 시도해 주세요.',
+        action: FilledButton(
+          onPressed: () {
+            setState(() {
+              _failed = false;
+              _loading = true;
+              _progress = 0;
+            });
+            _scan();
+          },
+          child: const Text('다시 시도'),
         ),
       );
     }

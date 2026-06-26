@@ -119,13 +119,12 @@ class SimilarPhotoFinder {
       for (var start = 0; start < assets.length; start += batch) {
         final end = math.min(start + batch, assets.length);
         final sub = assets.sublist(start, end);
-        final thumbs = await Future.wait(sub.map((a) => a
-            .thumbnailDataWithSize(_fitSize(a, 100))
-            .timeout(const Duration(seconds: 4), onTimeout: () => null)));
+        final thumbs = await Future.wait(sub.map((a) => _safeThumb(a, 100)));
         final sigs = await Future.wait(thumbs.map((t) => t == null
             ? Future<PhotoSignature?>.value(null)
             : ImageHash.signatureFromBytes(t)
-                .timeout(const Duration(seconds: 3), onTimeout: () => null)));
+                .timeout(const Duration(seconds: 3), onTimeout: () => null)
+                .catchError((_) => null)));
         for (var k = 0; k < sub.length; k++) {
           final s = sigs[k];
           if (s != null) {
@@ -161,10 +160,7 @@ class SimilarPhotoFinder {
       for (var i = 0; i < pool.length; i++) {
         final v = pool[i].visual;
         double score;
-        final bytes = await pool[i]
-            .asset
-            .thumbnailDataWithSize(_fitSize(pool[i].asset, 512))
-            .timeout(const Duration(seconds: 4), onTimeout: () => null);
+        final bytes = await _safeThumb(pool[i].asset, 512);
         final cand =
             bytes == null ? null : await _detectPose(detector, bytes, tmpDir);
         if (cand != null && cand.length >= 3) {
@@ -184,6 +180,19 @@ class SimilarPhotoFinder {
       return matches.length > topN ? matches.sublist(0, topN) : matches;
     } finally {
       await detector.close();
+    }
+  }
+
+  /// 썸네일을 안전하게 가져온다 — 타임아웃 + 예외를 모두 null로 흡수.
+  /// 만장 갤러리엔 클라우드 전용/접근불가 사진이 섞여 throw하므로, 이를 감싸지
+  /// 않으면 Future.wait 전체가 실패해 스캔이 멈춘다(1% 고정의 원인).
+  Future<Uint8List?> _safeThumb(AssetEntity a, int longSide) async {
+    try {
+      return await a
+          .thumbnailDataWithSize(_fitSize(a, longSide))
+          .timeout(const Duration(seconds: 4), onTimeout: () => null);
+    } catch (_) {
+      return null;
     }
   }
 
