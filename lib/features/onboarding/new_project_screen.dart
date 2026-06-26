@@ -189,53 +189,80 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
                   color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ],
-          const SizedBox(height: 28),
-          Text('특별한 날도 챙겨볼까요?', style: text.titleMedium),
-          const SizedBox(height: 12),
-          _EventPegSelector(
-            selected: _eventPegs,
-            onToggle: (peg) => setState(() {
-              if (_eventPegs.contains(peg)) {
-                _eventPegs.remove(peg);
-              } else {
-                _eventPegs.add(peg);
-              }
-            }),
-          ),
-          const SizedBox(height: 28),
-          Text('주인공 생일 (선택)', style: text.titleMedium),
-          const SizedBox(height: 4),
-          Text('넣으면 사진마다 나이가 자동으로 표시돼요',
-              style: text.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _pickBirthday,
-            icon: const Icon(Icons.cake_outlined),
-            label: Text(_birthday == null
-                ? '생일 선택'
-                : '${_birthday!.year}.${_birthday!.month.toString().padLeft(2, '0')}.${_birthday!.day.toString().padLeft(2, '0')}'),
+          const SizedBox(height: 16),
+          // 선택 항목은 접어서 — 이름·주기만으로 바로 시작 가능(30초 가입).
+          Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(top: 4, bottom: 8),
+              title: const Text('선택 항목 더보기'),
+              subtitle: Text('특별한 날 · 생일 · 알림',
+                  style: text.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('특별한 날도 챙겨볼까요?', style: text.titleMedium),
+                ),
+                const SizedBox(height: 12),
+                _EventPegSelector(
+                  selected: _eventPegs,
+                  onToggle: (peg) => setState(() {
+                    if (_eventPegs.contains(peg)) {
+                      _eventPegs.remove(peg);
+                    } else {
+                      _eventPegs.add(peg);
+                    }
+                  }),
+                ),
+                const SizedBox(height: 24),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('주인공 생일', style: text.titleMedium),
+                ),
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('넣으면 사진마다 나이가 자동으로 표시돼요',
+                      style: text.bodySmall?.copyWith(
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant)),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _pickBirthday,
+                    icon: const Icon(Icons.cake_outlined),
+                    label: Text(_birthday == null
+                        ? '생일 선택'
+                        : '${_birthday!.year}.${_birthday!.month.toString().padLeft(2, '0')}.${_birthday!.day.toString().padLeft(2, '0')}'),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: SwitchListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                    value: _pushEnabled,
+                    onChanged: (v) => setState(() => _pushEnabled = v),
+                    title: const Text('알림 받기'),
+                    subtitle: Text(
+                      '선택한 주기와 특별한 날에 알림을 보내드릴까요?',
+                      style: text.bodySmall?.copyWith(
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
-          // 알림 받기 — 켜면 권한 요청 + 선택 주기/특별한 날 아침 10시 발송.
-          Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: SwitchListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-              value: _pushEnabled,
-              onChanged: (v) => setState(() => _pushEnabled = v),
-              title: const Text('알림 받기'),
-              subtitle: Text(
-                '선택한 주기와 특별한 날에 알림을 보내드릴까요?',
-                style: text.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant),
-              ),
-            ),
-          ),
-          const SizedBox(height: 32),
           // 시작하기 — 하단 고정 바가 아니라 여백을 두고 띄운 형태.
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 28),

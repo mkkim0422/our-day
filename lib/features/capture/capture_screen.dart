@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -52,6 +53,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
   FlashMode _flash = FlashMode.off;
   Offset? _focusPoint; // 탭 포커스 표시(잠깐)
   Timer? _focusTimer;
+  bool _shutterFlash = false; // 촬영 순간 화면 플래시
 
   // 셀프 타이머: 0(끄기) → 3 → 5 → 10초 순환. 같은 포즈로 직접 들어가 찍을 때 유용.
   static const _timerOptions = [0, 3, 5, 10];
@@ -212,7 +214,15 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
 
   Future<void> _capture() async {
     if (_busy || !_camera.isReady) return;
-    setState(() => _busy = true);
+    HapticFeedback.mediumImpact();
+    // 셔터 플래시(촬영됐다는 즉각 피드백).
+    setState(() {
+      _busy = true;
+      _shutterFlash = true;
+    });
+    Future.delayed(const Duration(milliseconds: 140), () {
+      if (mounted) setState(() => _shutterFlash = false);
+    });
     try {
       final shot = await _camera.takePicture();
       await _openAdjuster(shot.path);
@@ -300,6 +310,14 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
             ),
           ),
         const IgnorePointer(child: GuideGrid()),
+        // 셔터 플래시.
+        IgnorePointer(
+          child: AnimatedOpacity(
+            opacity: _shutterFlash ? 0.85 : 0,
+            duration: const Duration(milliseconds: 120),
+            child: Container(color: Colors.white),
+          ),
+        ),
         if (_focusPoint != null) _focusIndicator(),
         if (_camera.isReady && _camera.zoom > _camera.minZoom + 0.05)
           _zoomPill(),
@@ -512,13 +530,22 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
             if (_hasReference && _showOverlay)
               Row(
                 children: [
-                  const Icon(Icons.opacity, color: Colors.white70, size: 20),
+                  const Icon(Icons.layers, color: Colors.white70, size: 18),
+                  const SizedBox(width: 4),
+                  const Text('겹쳐 보기',
+                      style: TextStyle(color: Colors.white70, fontSize: 12)),
                   Expanded(
                     child: Slider(
                       value: _overlayOpacity,
-                      onChanged: (v) =>
-                          setState(() => _overlayOpacity = v),
+                      onChanged: (v) => setState(() => _overlayOpacity = v),
                     ),
+                  ),
+                  SizedBox(
+                    width: 36,
+                    child: Text('${(_overlayOpacity * 100).round()}%',
+                        textAlign: TextAlign.right,
+                        style:
+                            const TextStyle(color: Colors.white70, fontSize: 12)),
                   ),
                 ],
               ),

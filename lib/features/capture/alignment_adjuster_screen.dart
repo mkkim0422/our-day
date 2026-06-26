@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/db/app_database.dart';
@@ -115,6 +116,7 @@ class _AlignmentAdjusterScreenState
           .read(notificationServiceProvider)
           .scheduleForProject(widget.project, all, birthday: birthday);
 
+      HapticFeedback.heavyImpact(); // 저장 완료 — 손맛 피드백.
       if (mounted) Navigator.of(context).pop(capture);
     } finally {
       if (mounted) setState(() => _saving = false);
