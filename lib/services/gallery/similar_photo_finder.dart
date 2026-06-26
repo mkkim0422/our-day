@@ -341,7 +341,9 @@ class SimilarPhotoFinder {
       debugPrint('[similar] done: ${matches.length} matches');
       return result;
     } finally {
-      await detector.close();
+      // close()도 네이티브 호출 — 손상된 ML Kit에서 멈추지 않도록 타임아웃.
+      await detector.close().timeout(const Duration(seconds: 5),
+          onTimeout: () {});
     }
   }
 
