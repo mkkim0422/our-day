@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 
-import '../../core/utils/image_hash.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repositories/providers.dart';
 import '../../services/gallery/similar_photo_finder.dart';
@@ -54,14 +53,13 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
       return;
     }
     final refFile = File(widget.referencePath);
-    final refHash =
-        refFile.existsSync() ? ImageHash.ofBytes(refFile.readAsBytesSync()) : null;
-    if (refHash == null) {
+    if (!refFile.existsSync()) {
       setState(() => _loading = false);
       return;
     }
+    final refBytes = refFile.readAsBytesSync();
     final matches = await finder.findSimilar(
-      refHash,
+      refBytes,
       onProgress: (p) {
         if (mounted) setState(() => _progress = p);
       },
