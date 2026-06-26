@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:photo_manager/photo_manager.dart';
 
 import 'similar_photos_screen.dart';
 
@@ -10,6 +11,7 @@ import '../../core/utils/backfill_dates.dart';
 import '../../core/utils/schedule_period.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repositories/providers.dart';
+import '../../services/gallery/similar_photo_finder.dart';
 import '../../services/providers.dart';
 
 /// 과거 일괄 채우기 — ②-1 입력경로 3 ("backfill").
@@ -211,9 +213,49 @@ class _BackfillScreenState extends ConsumerState<BackfillScreen> {
 
   /// 기준 사진 한 장을 고르면, 갤러리에서 비슷한 자세(포즈) 사진을 찾아 보여준다.
   ///
+  /// 흐름: ① 사진 접근 권한을 **먼저** 한 번 요청(전체/일부/거부 구분) →
+  /// ② '모든 사진' 허용 시에만 기준 사진 선택으로 진행. '일부만 허용'이면 그
+  /// 사진들만 검색돼 엉뚱한 결과가 나오므로 전체 허용을 안내한다.
+  ///
   /// maxWidth/imageQuality 지정 → image_picker가 원본을 **JPEG로 재인코딩**한다.
   /// (갤럭시 기본 HEIC 등 Dart image 패키지가 못 푸는 포맷이어도 안전하게 디코딩)
   Future<void> _findSimilar() async {
+    final access = await ref.read(similarPhotoFinderProvider).requestAccess();
+    if (!mounted) return;
+    if (access == GalleryAccess.denied) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('사진 접근을 허용해야 비슷한 사진을 찾을 수 있어요.'),
+          action:
+              SnackBarAction(label: '설정', onPressed: PhotoManager.openSetting),
+        ),
+      );
+      return;
+    }
+    if (access == GalleryAccess.limited) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('모든 사진 접근이 필요해요'),
+          content: const Text(
+              "‘일부 사진만 허용’ 상태예요. 그러면 허용한 사진들만 검색돼 결과가 정확하지 않아요.\n"
+              "갤러리 전체에서 비슷한 자세 사진을 찾으려면 ‘모든 사진’을 허용해 주세요."),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('취소')),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                PhotoManager.openSetting();
+              },
+              child: const Text('설정 열기'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    // 모든 사진 허용 → 기준 사진 선택 후 검색.
     final refImg = await _picker.pickImage(
       source: ImageSource.gallery,
       maxWidth: 1600,

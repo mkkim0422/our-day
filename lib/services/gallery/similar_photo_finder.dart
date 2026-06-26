@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:path/path.dart' as p;
@@ -10,11 +10,35 @@ import 'package:photo_manager/photo_manager.dart';
 
 import '../../core/utils/image_hash.dart';
 
+/// 사진 접근 권한 상태(전체/일부/거부).
+enum GalleryAccess { full, limited, denied }
+
 /// 갤러리에서 기준 사진과 비슷한 후보 1건.
 class SimilarMatch {
   const SimilarMatch(this.asset, this.similarity);
   final AssetEntity asset;
   final double similarity; // 0~1
+}
+
+/// compute()로 백그라운드 아이솔레이트에 넘길 입력.
+class _RecallInput {
+  const _RecallInput(this.refBytes, this.thumbs);
+  final Uint8List refBytes;
+  final List<Uint8List> thumbs;
+}
+
+/// 백그라운드 아이솔레이트에서 기준 시그니처 대비 후보 시각 유사도를 일괄 계산.
+/// 메인 스레드를 막지 않도록 무거운 디코딩/해시를 여기서 처리한다.
+/// 기준 디코딩 실패 시 빈 리스트, 개별 후보 디코딩 실패는 -1.
+List<double> _recallScores(_RecallInput input) {
+  final refSig = ImageHash.signatureOf(input.refBytes);
+  if (refSig == null) return const <double>[];
+  final out = <double>[];
+  for (final t in input.thumbs) {
+    final s = ImageHash.signatureOf(t);
+    out.add(s == null ? -1.0 : ImageHash.signatureSimilarity(refSig, s));
+  }
+  return out;
 }
 
 /// 후보 1건의 시각 점수(1단계 recall 결과).
@@ -59,6 +83,15 @@ class SimilarPhotoFinder {
     return ps.isAuth || ps.hasAccess;
   }
 
+  /// 사진 접근 권한을 요청하고 결과를 전체/일부/거부로 알린다.
+  /// "일부만 허용"이면 그 사진들만 보이므로 검색 품질이 떨어진다 → 호출부에서 안내.
+  Future<GalleryAccess> requestAccess() async {
+    final ps = await PhotoManager.requestPermissionExtend();
+    if (ps == PermissionState.authorized) return GalleryAccess.full;
+    if (ps.hasAccess) return GalleryAccess.limited;
+    return GalleryAccess.denied;
+  }
+
   /// 기준 사진 바이트 [refBytes]와 비슷한 자세의 사진을 유사도 높은 순으로.
   ///
   /// [onProgress]는 0~1. 포즈 모드일 땐 0~0.4 recall + 0.4~1 포즈 분석.
@@ -70,9 +103,6 @@ class SimilarPhotoFinder {
     double minVisual = 0.5, // 포즈 없을 때 시각 하한
     void Function(double progress)? onProgress,
   }) async {
-    final refSig = ImageHash.signatureOf(refBytes);
-    if (refSig == null) return const [];
-
     final detector = PoseDetector(
       options: PoseDetectorOptions(mode: PoseDetectionMode.single),
     );
@@ -94,21 +124,35 @@ class SimilarPhotoFinder {
       if (count == 0) return const [];
       final assets = await all.getAssetListRange(start: 0, end: count);
 
-      // ── 1단계 recall: 시각 시그니처(빠르게 후보 추리기) ──
+      // ── 1단계 recall ──
+      // 썸네일 수집만 메인에서(플랫폼 채널). 무거운 이미지 디코딩/시그니처 계산은
+      // **백그라운드 아이솔레이트(compute)** 로 — 안 그러면 수백 장 동기 디코딩이
+      // UI 스레드를 막아 화면이 0%에서 멈춘다(프리징).
       final recallSpan = poseMode ? 0.4 : 1.0;
-      final scored = <_Scored>[];
+      final keptAssets = <AssetEntity>[];
+      final thumbs = <Uint8List>[];
       for (var i = 0; i < assets.length; i++) {
         final Uint8List? thumb =
             await assets[i].thumbnailDataWithSize(_fitSize(assets[i], 100));
         if (thumb != null) {
-          final sig = ImageHash.signatureOf(thumb);
-          if (sig != null) {
-            scored.add(
-                _Scored(assets[i], ImageHash.signatureSimilarity(refSig, sig)));
-          }
+          keptAssets.add(assets[i]);
+          thumbs.add(thumb);
         }
-        if (i % 8 == 0) onProgress?.call(recallSpan * (i + 1) / assets.length);
+        if (i % 8 == 0) {
+          onProgress?.call(recallSpan * 0.6 * (i + 1) / assets.length);
+        }
       }
+      if (thumbs.isEmpty) return const [];
+      final rawScores =
+          await compute(_recallScores, _RecallInput(refBytes, thumbs));
+      if (rawScores.isEmpty) return const []; // 기준 사진 디코딩 실패.
+      final scored = <_Scored>[];
+      for (var j = 0; j < keptAssets.length; j++) {
+        if (rawScores[j] >= 0) {
+          scored.add(_Scored(keptAssets[j], rawScores[j]));
+        }
+      }
+      onProgress?.call(recallSpan);
       scored.sort((a, b) => b.visual.compareTo(a.visual));
 
       // 포즈가 없는 기준: 시각 유사도로만.
