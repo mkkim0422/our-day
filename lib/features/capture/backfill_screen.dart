@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'similar_photos_screen.dart';
+
 import '../../core/utils/backfill_dates.dart';
 import '../../core/utils/schedule_period.dart';
 import '../../data/db/app_database.dart';
@@ -206,10 +208,31 @@ class _BackfillScreenState extends ConsumerState<BackfillScreen> {
               icon: const Icon(Icons.photo_library),
               label: const Text('갤러리에서 고르기'),
             ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _findSimilar,
+              icon: const Icon(Icons.image_search),
+              label: const Text('비슷한 사진 자동으로 찾기'),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  /// 기준 사진 한 장을 고르면, 갤러리에서 비슷한(같은 포즈·장소) 사진을 찾아 보여준다.
+  Future<void> _findSimilar() async {
+    final refImg = await _picker.pickImage(source: ImageSource.gallery);
+    if (refImg == null || !mounted) return;
+    final added = await Navigator.of(context).push<int>(
+      MaterialPageRoute(
+        builder: (_) => SimilarPhotosScreen(
+            project: widget.project, referencePath: refImg.path),
+      ),
+    );
+    if (added != null && added > 0 && mounted) {
+      Navigator.of(context).pop(added); // 채우기 완료 → 닫기.
+    }
   }
 
   Widget _list() {
