@@ -21,6 +21,42 @@ class SimilarMatch {
   final double similarity; // 0~1
 }
 
+/// 검색 전 미리보기 — 총 사진 수 + 이 기기에서 실측한 장당 처리시간으로,
+/// "빠른 검색 / 전체 검색"이 각각 몇 초/분 걸릴지 **예측**해 사용자에게 보여준다.
+/// (사용자는 자기 사진이 몇 장인지 모르고 알 필요도 없다 — 앱이 재고 알려준다.)
+class GallerySurvey {
+  const GallerySurvey({
+    required this.total,
+    required this.msPerPhoto,
+    required this.quickCount,
+  });
+
+  /// 갤러리 총 사진 수.
+  final int total;
+
+  /// 이 기기에서 장당 처리시간(ms) — 표본을 실제로 돌려 측정.
+  final double msPerPhoto;
+
+  /// '빠른 검색'이 훑을 장수(전 기간 분산 표본).
+  final int quickCount;
+
+  bool get hasPhotos => total > 0;
+
+  /// '전체 검색'이 훑을 장수(상한 적용).
+  int get fullCount => math.min(total, 6000);
+
+  /// 포즈 재랭킹 등 고정 오버헤드(초). 표본 외 일정 비용.
+  static const double _fixedSec = 12;
+
+  Duration estimate(int count) {
+    final sec = _fixedSec + (msPerPhoto * count) / 1000.0;
+    return Duration(milliseconds: (sec * 1000).round());
+  }
+
+  Duration get quickEstimate => estimate(quickCount);
+  Duration get fullEstimate => estimate(fullCount);
+}
+
 /// 후보 1건의 시각 점수(1단계 recall 결과).
 class _Scored {
   _Scored(this.asset, this.visual);
@@ -72,29 +108,119 @@ class SimilarPhotoFinder {
     return GalleryAccess.denied;
   }
 
+  /// 검색 전 갤러리를 빠르게 조사: 총 장수 + 장당 처리시간(실측) → 예측치 산출.
+  /// 화면은 이걸로 "사진 N장 · 빠른검색 약 X초 / 전체검색 약 Y분"을 보여준다.
+  Future<GallerySurvey> survey() async {
+    final paths = await PhotoManager.getAssetPathList(
+      type: RequestType.image,
+      onlyAll: true,
+    ).timeout(const Duration(seconds: 10), onTimeout: () => <AssetPathEntity>[]);
+    if (paths.isEmpty) {
+      return const GallerySurvey(total: 0, msPerPhoto: 30, quickCount: 0);
+    }
+    final all = paths.first;
+    final total = await all.assetCountAsync
+        .timeout(const Duration(seconds: 8), onTimeout: () => 0);
+    if (total == 0) {
+      return const GallerySurvey(total: 0, msPerPhoto: 30, quickCount: 0);
+    }
+    // 표본 32장을 전 기간에서 골라 recall과 같은 작업(썸네일+시그니처)을 재본다.
+    final sample = await _collectSpread(all, total, math.min(total, 32));
+    final ms = await _probeMsPerPhoto(sample);
+    debugPrint('[similar] survey total=$total ms/photo=${ms.toStringAsFixed(1)}');
+    return GallerySurvey(
+        total: total, msPerPhoto: ms, quickCount: math.min(total, 1500));
+  }
+
+  /// 표본을 recall과 동일하게 16장씩 동시 처리해 장당 ms를 실측. 표본 없으면 폴백.
+  Future<double> _probeMsPerPhoto(List<AssetEntity> sample) async {
+    if (sample.isEmpty) return 30;
+    final sw = Stopwatch()..start();
+    const batch = 16;
+    var n = 0;
+    for (var start = 0; start < sample.length; start += batch) {
+      final end = math.min(start + batch, sample.length);
+      final sub = sample.sublist(start, end);
+      final thumbs = await Future.wait(sub.map((a) => _safeThumb(a, 100)));
+      await Future.wait(thumbs.map((t) => t == null
+          ? Future<PhotoSignature?>.value(null)
+          : ImageHash.signatureFromBytes(t)
+              .timeout(const Duration(seconds: 3), onTimeout: () => null)
+              .catchError((_) => null)));
+      n += sub.length;
+    }
+    sw.stop();
+    if (n == 0) return 30;
+    // 실측에 여유(20%)를 더해 과소예측 방지(콜드 캐시 등).
+    return (sw.elapsedMilliseconds / n) * 1.2;
+  }
+
+  /// [want]장을 전 기간([total])에 **균등 분산**해 가져온다. 최신 N장만 보면 과거
+  /// 사진에 닿지 못해 "연도별"이 깨지므로. 부분만 처리돼도 전 연도가 섞이도록
+  /// 버킷을 라운드로빈으로 인터리브한다.
+  Future<List<AssetEntity>> _collectSpread(
+      AssetPathEntity all, int total, int want) async {
+    if (want <= 0) return const [];
+    if (total <= want) {
+      return await all.getAssetListRange(start: 0, end: total).timeout(
+          const Duration(seconds: 12),
+          onTimeout: () => <AssetEntity>[]);
+    }
+    const buckets = 12;
+    final perBucket = (want / buckets).ceil();
+    final parts = <List<AssetEntity>>[];
+    for (var b = 0; b < buckets; b++) {
+      final start = (total * b / buckets).floor();
+      final end = math.min(start + perBucket, total);
+      if (start >= end) continue;
+      try {
+        final part = await all.getAssetListRange(start: start, end: end).timeout(
+            const Duration(seconds: 8),
+            onTimeout: () => <AssetEntity>[]);
+        if (part.isNotEmpty) parts.add(part);
+      } catch (_) {}
+    }
+    // 라운드로빈 인터리브 → 앞부분만 처리돼도 전 연도가 섞이게.
+    final out = <AssetEntity>[];
+    var added = true;
+    for (var i = 0; added; i++) {
+      added = false;
+      for (final part in parts) {
+        if (i < part.length) {
+          out.add(part[i]);
+          added = true;
+        }
+      }
+    }
+    return out;
+  }
+
   /// 기준 사진 바이트 [refBytes]와 비슷한 자세의 사진을 유사도 높은 순으로.
   ///
-  /// [onProgress]는 0~1. 포즈 모드일 땐 0~0.4 recall + 0.4~1 포즈 분석.
+  /// [onProgress]는 0~1. 포즈 모드일 땐 0~0.45 recall + 0.45~1 포즈 분석.
   Future<List<SimilarMatch>> findSimilar(
     Uint8List refBytes, {
     // 실유저는 사진이 수만 장. getAssetListRange(0, N)로 **최근 N장만** 가져와
     // 총 장수와 무관하게 시간·메모리를 N에 묶는다(전체를 훑지 않음). 1단계 recall은
     // 가벼우니 폭넓게 보고(연도별 타임랩스는 과거 사진까지 닿아야 하므로), 무거운
     // 포즈 ML은 상위 후보 소수만 돌린다.
-    int scanLimit = 800,
+    int scanLimit = 1500,
     int posePool = 30,
     int topN = 60,
     double minVisual = 0.5, // 포즈 없을 때 시각 하한
-    // 전체 작업 벽시계 예산 — 사진이 수만 장이어도 이 시간이 지나면 "지금까지 찾은
-    // 최선"을 돌려주고 끝낸다. 무한 멈춤을 원천 차단하는 핵심 안전장치.
-    Duration budget = const Duration(seconds: 70),
+    // 안전 상한(무한 멈춤 방지). 평소엔 isCancelled/scanLimit가 먼저 끝낸다.
+    Duration budget = const Duration(minutes: 20),
+    // 사용자가 '중지'를 누르면 true → 다음 단계에서 즉시 멈추고 최선결과 반환.
+    bool Function()? isCancelled,
     void Function(double progress)? onProgress,
+    // 스캔한 장수/계획 장수 — "1,200 / 1,500장 · 약 30초 남음" 표시용.
+    void Function(int scanned, int planned)? onScanned,
     // 1단계 결과가 나오는 즉시 화면에 흘려보낸다(점진 표시) → 전 과정이 끝날 때까지
     // 빈 스피너로 기다리지 않게. 구글포토식 "결과 먼저, 정렬은 계속 정교화".
     void Function(List<SimilarMatch> partial)? onPartial,
   }) async {
     final clock = Stopwatch()..start();
-    bool overBudget() => clock.elapsed >= budget;
+    bool stop() => clock.elapsed >= budget || (isCancelled?.call() ?? false);
 
     final detector = PoseDetector(
       options: PoseDetectorOptions(mode: PoseDetectionMode.single),
@@ -116,12 +242,9 @@ class SimilarPhotoFinder {
       //   (여기 멈춤이 "사진이 너무 많아서" 프리징되던 가장 유력한 지점이었다.)
       final total = await all.assetCountAsync
           .timeout(const Duration(seconds: 8), onTimeout: () => 0);
-      final count = math.min(total, scanLimit);
-      if (count == 0) return const [];
-      final assets = await all
-          .getAssetListRange(start: 0, end: count)
-          .timeout(const Duration(seconds: 12),
-              onTimeout: () => <AssetEntity>[]);
+      if (total == 0) return const [];
+      // 최신 N장이 아니라 **전 기간에 분산**해 가져온다(연도별 커버리지).
+      final assets = await _collectSpread(all, total, math.min(total, scanLimit));
       if (assets.isEmpty) return const [];
       debugPrint('[similar] scan ${assets.length} of $total');
 
@@ -133,7 +256,7 @@ class SimilarPhotoFinder {
       final scored = <_Scored>[];
       const batch = 16;
       for (var start = 0; start < assets.length; start += batch) {
-        if (overBudget()) break; // 예산 초과 시 지금까지로 마무리.
+        if (stop()) break; // 중지/예산초과 시 지금까지로 마무리.
         final end = math.min(start + batch, assets.length);
         final sub = assets.sublist(start, end);
         final thumbs = await Future.wait(sub.map((a) => _safeThumb(a, 100)));
@@ -150,10 +273,12 @@ class SimilarPhotoFinder {
           }
         }
         onProgress?.call(0.01 + 0.44 * end / assets.length);
+        onScanned?.call(end, assets.length);
         // UI 스레드가 스피너·진행률을 그릴 틈을 준다(메인 스레드 포화/ANR 방지).
         await Future<void>.delayed(Duration.zero);
       }
-      debugPrint('[similar] recall done: ${scored.length} scored');
+      debugPrint('[similar] recall done: ${scored.length} scored '
+          'in ${clock.elapsedMilliseconds}ms');
       if (scored.isEmpty) return const [];
       scored.sort((a, b) => b.visual.compareTo(a.visual));
 
@@ -167,7 +292,7 @@ class SimilarPhotoFinder {
 
       // ── 기준 포즈 검출 ──
       final refPose =
-          overBudget() ? null : await _detectPose(detector, refBytes, tmpDir);
+          stop() ? null : await _detectPose(detector, refBytes, tmpDir);
       final poseMode = refPose != null && refPose.length >= 3;
       debugPrint('[similar] refPose=${refPose?.length} poseMode=$poseMode');
 
@@ -183,7 +308,7 @@ class SimilarPhotoFinder {
       final matches = <SimilarMatch>[];
       final processed = <String>{};
       for (var i = 0; i < pool.length; i++) {
-        if (overBudget()) break;
+        if (stop()) break;
         final v = pool[i].visual;
         double score;
         final bytes = await _safeThumb(pool[i].asset, 512);
