@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:image/image.dart' as img;
 
@@ -106,5 +107,65 @@ class ImageHash {
     final s = similarity(a.dhash, b.dhash);
     final c = colorSimilarity(a.colorBlocks, b.colorBlocks);
     return 0.6 * s + 0.4 * c;
+  }
+
+  /// **dart:ui 네이티브 디코더**로 시그니처 계산 — 순수 Dart `image` 패키지의
+  /// hang/저속을 피한다(수백 장 스캔의 핵심 경로). 비동기지만 디코딩이 네이티브
+  /// 백그라운드라 UI 스레드를 막지 않는다. 모든 포맷(HEIC 포함) 지원.
+  ///
+  /// 32x32로 스쿼시 디코딩 → 기준/후보가 동일 변환을 거쳐 비교가 일관된다.
+  static Future<PhotoSignature?> signatureFromBytes(Uint8List bytes) async {
+    try {
+      final codec = await ui.instantiateImageCodec(bytes,
+          targetWidth: 32, targetHeight: 32);
+      final frame = await codec.getNextFrame();
+      final image = frame.image;
+      final bd = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+      codec.dispose();
+      if (bd == null) return null;
+      return _sigFromRgba32(bd.buffer.asUint8List());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 32x32 RGBA → dHash(9x8) + 컬러(4x4). 순수 산술이라 매우 빠르다.
+  static PhotoSignature _sigFromRgba32(Uint8List px) {
+    double gray(int x, int y) {
+      final i = (y * 32 + x) * 4;
+      return 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+    }
+
+    double g(int gx, int gy) =>
+        gray((gx * 32 ~/ 9).clamp(0, 31), (gy * 32 ~/ 8).clamp(0, 31));
+
+    var hash = 0;
+    var bit = 0;
+    for (var y = 0; y < 8; y++) {
+      for (var x = 0; x < 8; x++) {
+        if (g(x, y) < g(x + 1, y)) hash |= (1 << bit);
+        bit++;
+      }
+    }
+    final color = Uint8List(48);
+    var k = 0;
+    for (var by = 0; by < 4; by++) {
+      for (var bx = 0; bx < 4; bx++) {
+        var r = 0, gg = 0, b = 0;
+        for (var yy = by * 8; yy < by * 8 + 8; yy++) {
+          for (var xx = bx * 8; xx < bx * 8 + 8; xx++) {
+            final i = (yy * 32 + xx) * 4;
+            r += px[i];
+            gg += px[i + 1];
+            b += px[i + 2];
+          }
+        }
+        color[k++] = (r / 64).round();
+        color[k++] = (gg / 64).round();
+        color[k++] = (b / 64).round();
+      }
+    }
+    return PhotoSignature(hash, color);
   }
 }

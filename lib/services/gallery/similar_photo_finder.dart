@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:path/path.dart' as p;
@@ -18,27 +18,6 @@ class SimilarMatch {
   const SimilarMatch(this.asset, this.similarity);
   final AssetEntity asset;
   final double similarity; // 0~1
-}
-
-/// compute()로 아이솔레이트에 넘길 청크 입력(기준 시그니처 + 후보 썸네일들).
-class _ChunkInput {
-  const _ChunkInput(this.refSig, this.thumbs);
-  final PhotoSignature refSig;
-  final List<Uint8List> thumbs;
-}
-
-/// 아이솔레이트: 기준 사진 바이트 → 시그니처(무거운 디코딩 1회). 실패 시 null.
-PhotoSignature? _decodeRefSig(Uint8List bytes) => ImageHash.signatureOf(bytes);
-
-/// 아이솔레이트: 후보 썸네일 청크의 시각 유사도(디코딩 실패는 -1).
-/// 무거운 디코딩/해시를 메인 스레드 밖에서, 청크로 나눠 처리해 화면이 멈추지 않게.
-List<double> _chunkScores(_ChunkInput input) {
-  final out = <double>[];
-  for (final t in input.thumbs) {
-    final s = ImageHash.signatureOf(t);
-    out.add(s == null ? -1.0 : ImageHash.signatureSimilarity(input.refSig, s));
-  }
-  return out;
 }
 
 /// 후보 1건의 시각 점수(1단계 recall 결과).
@@ -97,8 +76,12 @@ class SimilarPhotoFinder {
   /// [onProgress]는 0~1. 포즈 모드일 땐 0~0.4 recall + 0.4~1 포즈 분석.
   Future<List<SimilarMatch>> findSimilar(
     Uint8List refBytes, {
-    int scanLimit = 300,
-    int posePool = 60, // 포즈 모드에서 포즈 검출할 시각 상위 후보 수(대기시간 고려)
+    // 실유저는 사진이 수만 장. getAssetListRange(0, N)로 **최근 N장만** 가져와
+    // 총 장수와 무관하게 시간·메모리를 N에 묶는다(전체를 훑지 않음).
+    // 네이티브 디코딩이 장당 ~1.3ms라 500장도 1초 미만. 포즈 검출(ML)이 시간을
+    // 지배하므로 상위 45장만 재랭킹한다.
+    int scanLimit = 500,
+    int posePool = 45,
     int topN = 60,
     double minVisual = 0.5, // 포즈 없을 때 시각 하한
     void Function(double progress)? onProgress,
@@ -125,49 +108,36 @@ class SimilarPhotoFinder {
       final assets = await all.getAssetListRange(start: 0, end: count);
 
       // ── 1단계 recall ──
-      // 핵심: 진행률이 멈춰 보이지 않도록 (a) 썸네일을 동시에 batch로 수집하고
-      // (b) 무거운 디코딩/시그니처 계산은 아이솔레이트에서 **청크로 나눠** 처리해
-      // 매 청크마다 진행률을 갱신한다(한 번의 거대한 compute로 멈춰 보이던 문제 해결).
+      // dart:ui 네이티브 디코더로 시그니처를 계산한다. 순수 Dart image 패키지는
+      // 일부 입력에서 멈추거나(hang) 매우 느려 화면이 특정 %에서 굳었다.
+      // 네이티브 디코딩은 빠르고 백그라운드라 UI를 막지 않으며, batch마다 진행률을
+      // 갱신해 0→recallSpan으로 부드럽게 오른다.
       final recallSpan = poseMode ? 0.4 : 1.0;
 
-      // 기준 시그니처는 한 번만 디코딩(아이솔레이트).
-      final refSig = await compute(_decodeRefSig, refBytes);
+      final refSig = await ImageHash.signatureFromBytes(refBytes);
       if (refSig == null) return const []; // 기준 사진 디코딩 실패.
 
-      // (a) 썸네일 동시 수집 — 진행률 0 ~ recallSpan*0.5.
-      final keptAssets = <AssetEntity>[];
-      final thumbs = <Uint8List>[];
-      const fetchBatch = 16;
-      for (var start = 0; start < assets.length; start += fetchBatch) {
-        final end = math.min(start + fetchBatch, assets.length);
-        final results = await Future.wait(assets
-            .sublist(start, end)
-            .map((a) => a.thumbnailDataWithSize(_fitSize(a, 100))));
-        for (var k = 0; k < results.length; k++) {
-          final t = results[k];
-          if (t != null) {
-            keptAssets.add(assets[start + k]);
-            thumbs.add(t);
-          }
-        }
-        onProgress?.call(recallSpan * 0.5 * end / assets.length);
-      }
-      if (thumbs.isEmpty) return const [];
-
-      // (b) 디코딩/시그니처 비교 — 청크 단위 아이솔레이트, 진행률 recallSpan*0.5 ~ recallSpan.
       final scored = <_Scored>[];
-      const scoreChunk = 60;
-      for (var start = 0; start < thumbs.length; start += scoreChunk) {
-        final end = math.min(start + scoreChunk, thumbs.length);
-        final scores = await compute(
-            _chunkScores, _ChunkInput(refSig, thumbs.sublist(start, end)));
-        for (var k = 0; k < scores.length; k++) {
-          if (scores[k] >= 0) {
-            scored.add(_Scored(keptAssets[start + k], scores[k]));
+      const batch = 16;
+      for (var start = 0; start < assets.length; start += batch) {
+        final end = math.min(start + batch, assets.length);
+        final sub = assets.sublist(start, end);
+        // 썸네일 수집(동시) → 곧바로 네이티브 디코딩·시그니처 비교(동시).
+        final thumbs = await Future.wait(
+            sub.map((a) => a.thumbnailDataWithSize(_fitSize(a, 100))));
+        final sigs = await Future.wait(thumbs.map((t) => t == null
+            ? Future<PhotoSignature?>.value(null)
+            : ImageHash.signatureFromBytes(t)));
+        for (var k = 0; k < sub.length; k++) {
+          final s = sigs[k];
+          if (s != null) {
+            scored.add(
+                _Scored(sub[k], ImageHash.signatureSimilarity(refSig, s)));
           }
         }
-        onProgress?.call(recallSpan * (0.5 + 0.5 * end / thumbs.length));
+        onProgress?.call(recallSpan * end / assets.length);
       }
+      if (scored.isEmpty) return const [];
       scored.sort((a, b) => b.visual.compareTo(a.visual));
 
       // 포즈가 없는 기준: 시각 유사도로만.
