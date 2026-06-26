@@ -61,7 +61,12 @@ class _TimelineCell extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   img.existsSync()
-                      ? Image.file(img, fit: BoxFit.cover)
+                      ? Image.file(img, fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => Container(
+                                color: scheme.surfaceContainerHighest,
+                                child: Icon(Icons.image_not_supported_outlined,
+                                    color: scheme.onSurfaceVariant),
+                              ))
                       : Container(
                           color: scheme.surfaceContainerHighest,
                           child: Icon(Icons.image_not_supported_outlined,

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 /// 앱 설정 데이터(파일 저장). DB 스키마 마이그레이션 없이 가벼운 토글·상태를 보관.
 ///
 /// - [locationRecallEnabled]: 위치 기반 회상 알림 opt-in(5장 — 기본 꺼짐).
@@ -118,8 +120,9 @@ class AppSettingsStore {
     try {
       final json = jsonDecode(await _file.readAsString());
       return AppSettingsData.fromJson(json as Map<String, dynamic>);
-    } catch (_) {
-      // 손상 시 기본값으로 복구(앱이 죽지 않게).
+    } catch (e) {
+      // 손상 시 기본값으로 복구(앱이 죽지 않게). 진단을 위해 로그만 남긴다.
+      debugPrint('AppSettings load failed: $e');
       return const AppSettingsData();
     }
   }
@@ -128,6 +131,10 @@ class AppSettingsStore {
     if (!await _file.parent.exists()) {
       await _file.parent.create(recursive: true);
     }
-    await _file.writeAsString(jsonEncode(data.toJson()));
+    // 원자적 쓰기: 임시 파일에 먼저 쓰고 rename → 쓰는 도중 강제종료돼도
+    // 기존 설정(PIN·생일 등)이 잘린 JSON으로 깨지지 않는다.
+    final tmp = File('${_file.path}.tmp');
+    await tmp.writeAsString(jsonEncode(data.toJson()), flush: true);
+    await tmp.rename(_file.path);
   }
 }

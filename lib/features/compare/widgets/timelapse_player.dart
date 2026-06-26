@@ -51,7 +51,10 @@ class _TimelapsePlayerState extends State<TimelapsePlayer> {
   void didUpdateWidget(TimelapsePlayer old) {
     super.didUpdateWidget(old);
     if (old.framesAsc.length != widget.framesAsc.length) {
-      _index = _index.clamp(0, widget.framesAsc.length - 1);
+      // 빈 리스트면 clamp(0, -1)이 ArgumentError를 던지므로 분기.
+      _index = widget.framesAsc.isEmpty
+          ? 0
+          : _index.clamp(0, widget.framesAsc.length - 1);
     }
   }
 

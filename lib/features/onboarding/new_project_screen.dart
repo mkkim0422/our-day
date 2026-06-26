@@ -32,11 +32,16 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
     super.dispose();
   }
 
-  bool get _canSubmit => _titleController.text.trim().isNotEmpty && !_saving;
+  bool get _canSubmit =>
+      _titleController.text.trim().isNotEmpty &&
+      !_saving &&
+      // '직접' 주기인데 날짜를 하나도 안 고르면 알림 설정이 깨지므로 막는다.
+      (_scheduleType != ScheduleType.fixedDates || _fixedDates.isNotEmpty);
 
   Future<void> _create() async {
     final title = _titleController.text.trim();
     if (title.isEmpty) return;
+    if (_scheduleType == ScheduleType.fixedDates && _fixedDates.isEmpty) return;
     setState(() => _saving = true);
     try {
       // 푸시 on/off를 schedule_config에 보관 → 재예약 때도 사용자 선택을 따른다.

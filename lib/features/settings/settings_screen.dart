@@ -152,6 +152,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         return;
       }
       await ref.read(appSettingsProvider.notifier).setLockPin(hashPin(pin));
+      if (!mounted) return;
       _snack('앱 잠금을 켰어요.');
     } else {
       // 끌 때 현재 PIN 확인.
@@ -163,6 +164,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         return;
       }
       await ref.read(appSettingsProvider.notifier).setLockPin(null);
+      if (!mounted) return;
       _snack('앱 잠금을 껐어요.');
     }
   }
@@ -179,6 +181,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final next = await _promptPin('새 PIN', '새 4자리 PIN을 입력하세요');
     if (next == null) return;
     await ref.read(appSettingsProvider.notifier).setLockPin(hashPin(next));
+    if (!mounted) return;
     _snack('PIN을 변경했어요.');
   }
 

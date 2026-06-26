@@ -224,7 +224,11 @@ class _CapturePageState extends ConsumerState<_CapturePage> {
               ? GestureDetector(
                   onTap: widget.onOpenFullscreen,
                   child: SizedBox.expand(
-                    child: Image.file(file, fit: BoxFit.contain),
+                    child: Image.file(file,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, _, _) => const Center(
+                            child: Icon(Icons.broken_image_outlined,
+                                size: 48, color: Colors.white54))),
                   ),
                 )
               : const Center(
@@ -512,7 +516,11 @@ class _FullscreenGalleryState extends State<_FullscreenGallery> {
                         minScale: 1,
                         maxScale: 5,
                         child: SizedBox.expand(
-                          child: Image.file(file, fit: BoxFit.contain),
+                          child: Image.file(file,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, _, _) => const Center(
+                                  child: Icon(Icons.broken_image_outlined,
+                                      size: 48, color: Colors.white54))),
                         ),
                       )
                     : const Center(
