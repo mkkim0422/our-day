@@ -135,7 +135,13 @@ class _CompareViewState extends ConsumerState<CompareView> {
                 fontWeight: FontWeight.w800)),
         const SizedBox(height: 12),
         TimelapsePlayer(framesAsc: asc),
-        const SizedBox(height: 14),
+        const SizedBox(height: 6),
+        Text(
+          '타임랩스는 자연스러운 흐름을 위해 꾸미기 전 원본으로 이어져요.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 12),
         FilledButton.icon(
           onPressed: _exporting ? null : () => _shareTimelapse(asc),
           icon: _exporting
@@ -349,7 +355,8 @@ class _Side extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final file = File(capture.filePath);
+    // 꾸민 버전이 있으면 비교 카드에도 꾸민 사진을 보여준다(앨범과 일관).
+    final file = File(capture.decoratedPath ?? capture.filePath);
     final scheme = Theme.of(context).colorScheme;
     final age =
         birthday != null ? AgeLabel.format(birthday!, capture.capturedAt) : null;

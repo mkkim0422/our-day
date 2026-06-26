@@ -36,6 +36,8 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
   bool _showDate = true;
   bool _showAge = true;
   bool _showHeight = true;
+  double _filterStrength = 1.0; // 필터 세기
+  double _captionScale = 1.0; // 글자 크기(0.8/1.0/1.25)
   bool _busy = false;
 
   String _defaultCaption() {
@@ -155,6 +157,8 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
                       dateText: _showDate ? _fmtDate() : null,
                       ageText: (_showAge ? ageText : null),
                       heightText: (_showHeight ? heightText : null),
+                      filterStrength: _filterStrength,
+                      captionScale: _captionScale,
                     ),
                   ),
                 ),
@@ -201,6 +205,8 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   _toggle('날짜', _showDate, (v) => setState(() => _showDate = v)),
                   if (ageText != null)
@@ -208,9 +214,37 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
                   if (heightText != null)
                     _toggle('키', _showHeight,
                         (v) => setState(() => _showHeight = v)),
+                  // 글자 크기.
+                  _toggle('글자 작게', _captionScale == 0.8,
+                      (_) => setState(() => _captionScale = 0.8)),
+                  _toggle('보통', _captionScale == 1.0,
+                      (_) => setState(() => _captionScale = 1.0)),
+                  _toggle('크게', _captionScale == 1.25,
+                      (_) => setState(() => _captionScale = 1.25)),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 6),
+              // 필터 세기.
+              Row(
+                children: [
+                  const Icon(Icons.tune, size: 18),
+                  const SizedBox(width: 4),
+                  const Text('필터', style: TextStyle(fontSize: 12)),
+                  Expanded(
+                    child: Slider(
+                      value: _filterStrength,
+                      onChanged: (v) => setState(() => _filterStrength = v),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 36,
+                    child: Text('${(_filterStrength * 100).round()}%',
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(fontSize: 12)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
               // 카테고리 탭.
               SizedBox(
                 height: 34,

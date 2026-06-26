@@ -19,6 +19,8 @@ class SkinCard extends StatelessWidget {
     this.ageText,
     this.heightText,
     this.width = 340,
+    this.filterStrength = 1.0,
+    this.captionScale = 1.0,
   });
 
   final Skin skin;
@@ -28,6 +30,12 @@ class SkinCard extends StatelessWidget {
   final String? ageText;
   final String? heightText;
   final double width;
+
+  /// 필터 적용 세기(0=원본, 1=완전 적용).
+  final double filterStrength;
+
+  /// 캡션 글자 크기 배율(작게/보통/크게).
+  final double captionScale;
 
   bool get _isDark => skin.bg.first.computeLuminance() < 0.35;
   Color get _cardColor => _isDark ? skin.bg.first : Colors.white;
@@ -78,8 +86,16 @@ class SkinCard extends StatelessWidget {
     Widget photo = file.existsSync()
         ? Image.file(file, fit: BoxFit.cover)
         : Container(color: const Color(0xFFE3DCD0));
-    if (skin.colorFilter != null) {
-      photo = ColorFiltered(colorFilter: skin.colorFilter!, child: photo);
+    // 필터 세기: 원본 위에 필터본을 strength 만큼 겹쳐 블렌딩.
+    if (skin.colorFilter != null && filterStrength > 0) {
+      final filtered =
+          ColorFiltered(colorFilter: skin.colorFilter!, child: photo);
+      photo = filterStrength >= 0.99
+          ? filtered
+          : Stack(fit: StackFit.expand, children: [
+              photo,
+              Opacity(opacity: filterStrength, child: filtered),
+            ]);
     }
 
     // 4:5 비율로 통일(프리미엄 카드 감성).
@@ -169,7 +185,7 @@ class SkinCard extends StatelessWidget {
             maxLines: 2,
             style: GoogleFonts.getFont(
               skin.font,
-              fontSize: width * 0.075,
+              fontSize: width * 0.075 * captionScale,
               color: _onCard,
               height: 1.2,
             ),
