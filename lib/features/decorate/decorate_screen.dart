@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gal/gal.dart';
@@ -7,8 +9,16 @@ import '../../core/utils/age_label.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repositories/providers.dart';
 import '../../services/providers.dart';
+import 'decor_models.dart';
 import 'skin.dart';
 import 'skin_card.dart';
+
+/// 캔버스에 올린 스티커 1개(이모지). 위치는 카드 대비 정규화(0~1).
+class _Sticker {
+  _Sticker(this.emoji);
+  final String emoji;
+  double dx = 0.5, dy = 0.42, scale = 1, rotation = 0;
+}
 
 /// 사진 꾸미기 — **프리미엄 스킨**(카테고리별 큐레이션 템플릿)을 골라 문구·성장데이터와
 /// 함께 입혀 이미지로 공유/저장. 딥리서치 기반 다축 재설계.
@@ -40,6 +50,88 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
   double _captionScale = 1.0; // 글자 크기(0.8/1.0/1.25)
   bool _busy = false;
 
+  // 스티커 레이어.
+  final List<_Sticker> _stickers = [];
+  int? _selectedSticker;
+  double _cardW = 300;
+  bool _showStickerPalette = false;
+  double _baseScale = 1, _baseRot = 0;
+
+  void _addSticker(String emoji) {
+    setState(() {
+      _stickers.add(_Sticker(emoji));
+      _selectedSticker = _stickers.length - 1;
+    });
+  }
+
+  void _removeSticker(int i) {
+    setState(() {
+      _stickers.removeAt(i);
+      _selectedSticker = null;
+    });
+  }
+
+  Widget _buildSticker(int i, _Sticker s) {
+    final selected = _selectedSticker == i;
+    final scheme = Theme.of(context).colorScheme;
+    return Align(
+      alignment: Alignment(s.dx * 2 - 1, s.dy * 2 - 1),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _selectedSticker = i),
+        onScaleStart: (_) {
+          setState(() => _selectedSticker = i);
+          _baseScale = s.scale;
+          _baseRot = s.rotation;
+        },
+        onScaleUpdate: (d) {
+          final h = _boundaryKey.currentContext?.size?.height ?? _cardW * 1.5;
+          setState(() {
+            s.dx = (s.dx + d.focalPointDelta.dx / _cardW).clamp(0.02, 0.98);
+            s.dy = (s.dy + d.focalPointDelta.dy / h).clamp(0.02, 0.98);
+            s.scale = (_baseScale * d.scale).clamp(0.4, 4.0);
+            s.rotation = _baseRot + d.rotation;
+          });
+        },
+        child: Transform.rotate(
+          angle: s.rotation,
+          child: Transform.scale(
+            scale: s.scale,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: selected
+                  ? BoxDecoration(
+                      border: Border.all(color: scheme.primary, width: 1),
+                      borderRadius: BorderRadius.circular(6),
+                    )
+                  : null,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Text(s.emoji, style: TextStyle(fontSize: _cardW * 0.13)),
+                  if (selected)
+                    Positioned(
+                      right: -12,
+                      top: -12,
+                      child: GestureDetector(
+                        onTap: () => _removeSticker(i),
+                        child: CircleAvatar(
+                          radius: 11,
+                          backgroundColor: scheme.error,
+                          child: const Icon(Icons.close,
+                              size: 14, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   String _defaultCaption() {
     final note = widget.capture.note;
     if (note != null && note.trim().isNotEmpty) return note.trim();
@@ -59,8 +151,10 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
 
   /// 폰트 로드 후 꾸민 카드를 PNG로 캡처(원본 사진은 건드리지 않음).
   Future<String> _capture() async {
+    // 선택 테두리·삭제 버튼이 이미지에 찍히지 않게 해제 후 캡처.
+    if (_selectedSticker != null) setState(() => _selectedSticker = null);
     await GoogleFonts.pendingFonts([GoogleFonts.getFont(_skin.font)]);
-    await Future<void>.delayed(const Duration(milliseconds: 60));
+    await Future<void>.delayed(const Duration(milliseconds: 80));
     return ref.read(shareServiceProvider).captureBoundaryToPng(_boundaryKey,
         pixelRatio: 3);
   }
@@ -143,26 +237,42 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
       body: Column(
         children: [
           Expanded(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: FittedBox(
-                  fit: BoxFit.contain,
-                  child: RepaintBoundary(
-                    key: _boundaryKey,
-                    child: SkinCard(
-                      skin: _skin,
-                      capture: widget.capture,
-                      caption: _caption.text,
-                      dateText: _showDate ? _fmtDate() : null,
-                      ageText: (_showAge ? ageText : null),
-                      heightText: (_showHeight ? heightText : null),
-                      filterStrength: _filterStrength,
-                      captionScale: _captionScale,
+            child: LayoutBuilder(
+              builder: (context, c) {
+                // 고정폭 캔버스(FittedBox 스케일 없이 1:1 → 스티커 드래그 정확).
+                final w = math.min(c.maxWidth - 24, (c.maxHeight - 24) / 1.62);
+                _cardW = w;
+                return Center(
+                  // 빈 곳 탭 → 스티커 선택 해제.
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectedSticker = null),
+                    child: RepaintBoundary(
+                      key: _boundaryKey,
+                      child: SizedBox(
+                        width: w,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            SkinCard(
+                              skin: _skin,
+                              capture: widget.capture,
+                              caption: _caption.text,
+                              dateText: _showDate ? _fmtDate() : null,
+                              ageText: (_showAge ? ageText : null),
+                              heightText: (_showHeight ? heightText : null),
+                              filterStrength: _filterStrength,
+                              captionScale: _captionScale,
+                              width: w,
+                            ),
+                            for (var i = 0; i < _stickers.length; i++)
+                              _buildSticker(i, _stickers[i]),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ),
           _controls(context, scheme, ageText, heightText, skins),
@@ -202,6 +312,38 @@ class _DecorateScreenState extends ConsumerState<DecorateScreen> {
                   ),
                 ],
               ),
+              const SizedBox(height: 8),
+              // 스티커 추가 토글 + 팔레트.
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => setState(
+                      () => _showStickerPalette = !_showStickerPalette),
+                  icon: Icon(_showStickerPalette
+                      ? Icons.expand_less
+                      : Icons.emoji_emotions_outlined),
+                  label: const Text('스티커'),
+                ),
+              ),
+              if (_showStickerPalette)
+                SizedBox(
+                  height: 44,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      for (final e in kStickerPalette)
+                        GestureDetector(
+                          onTap: () => _addSticker(e),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            child: Center(
+                                child: Text(e,
+                                    style: const TextStyle(fontSize: 26))),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
