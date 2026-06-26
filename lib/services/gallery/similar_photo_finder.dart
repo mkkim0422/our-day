@@ -3,8 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
-import 'package:image/image.dart' as img;
+import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -18,31 +17,39 @@ class SimilarMatch {
   final double similarity; // 0~1
 }
 
-/// 얼굴 배치 요약 — 정규화된 [중심x, 중심y, 크기] 박스 목록(큰 얼굴 우선).
-class _FaceProfile {
-  _FaceProfile(this.boxes);
-  final List<List<double>> boxes;
-  int get count => boxes.length;
-}
-
-/// 후보 1건의 시각 점수.
+/// 후보 1건의 시각 점수(1단계 recall 결과).
 class _Scored {
   _Scored(this.asset, this.visual);
   final AssetEntity asset;
   final double visual;
 }
 
-/// 갤러리를 뒤져 기준 사진과 비슷한 사진을 찾는다.
+/// 비교할 "뼈"(연결된 두 관절). 위치·크기에 무관하게 **방향(각도)** 만 본다.
+const _bones = <List<PoseLandmarkType>>[
+  [PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder],
+  [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow],
+  [PoseLandmarkType.leftElbow, PoseLandmarkType.leftWrist],
+  [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow],
+  [PoseLandmarkType.rightElbow, PoseLandmarkType.rightWrist],
+  [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip],
+  [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip],
+  [PoseLandmarkType.leftHip, PoseLandmarkType.rightHip],
+  [PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee],
+  [PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle],
+  [PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee],
+  [PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle],
+];
+
+/// 갤러리를 뒤져 기준 사진과 **비슷한 자세(포즈)** 로 찍힌 사진을 찾는다.
 ///
-/// 메이저앱(구글/애플 포토) 방식 참고 — "비슷한 사진"의 핵심 신호는 **사람(얼굴)**:
-///  - 기준 사진에 **얼굴이 있으면**: 얼굴 검출로 후보를 걸러 **얼굴이 있는 사진만**
-///    반환하고, 얼굴 개수·위치·크기 정합 + 시각 유사도로 재랭킹한다.
-///    (얼굴 없는 사진이 추천되는 문제를 원천 차단)
-///  - 얼굴이 없으면: 시각 시그니처(dHash 구조 + 컬러 블록)로만 정렬.
+/// 이 앱은 "같은 포즈로 주기적으로 찍는" 가족사진 앱이다. 그래서 핵심 신호는
+/// 인물 동일성이 아니라 **자세** — Google ML Kit **포즈 추정**으로 관절 키포인트를
+/// 뽑아, 연결된 관절의 **방향 벡터(뼈 각도)** 로 정규화해 비교한다. 위치·크기·
+/// 화면 내 인물 크기에 무관하게 "자세가 얼마나 닮았는지"만 본다.
 ///
-/// 같은 "사람(인물 동일성)"까지 매칭하려면 얼굴 임베딩(MobileFaceNet/FaceNet,
-/// 코사인 유사도)이 필요하다 — 후속 업그레이드 대상. 현재는 얼굴 검출(ML Kit)
-/// 기반 게이팅·배치 정합으로 온디바이스에서 동작한다.
+///  - 기준 사진에서 **포즈가 잡히면**: 후보를 포즈 검출로 걸러 사람 자세가 있는
+///    사진만 남기고, 자세 유사도(80%) + 시각 유사도(20%)로 재랭킹.
+///  - 포즈가 없으면: 시각 시그니처(dHash 구조 + 컬러 블록)로만 정렬.
 class SimilarPhotoFinder {
   const SimilarPhotoFinder();
 
@@ -51,27 +58,28 @@ class SimilarPhotoFinder {
     return ps.isAuth || ps.hasAccess;
   }
 
-  /// 기준 사진 바이트 [refBytes]와 비슷한 사진을 유사도 높은 순으로.
+  /// 기준 사진 바이트 [refBytes]와 비슷한 자세의 사진을 유사도 높은 순으로.
   ///
-  /// [onProgress]는 0~1. 얼굴 모드일 땐 0~0.4 recall + 0.4~1 얼굴 분석.
+  /// [onProgress]는 0~1. 포즈 모드일 땐 0~0.4 recall + 0.4~1 포즈 분석.
   Future<List<SimilarMatch>> findSimilar(
     Uint8List refBytes, {
     int scanLimit = 600,
-    int facePool = 120, // 얼굴 모드에서 얼굴 검출할 시각 상위 후보 수
+    int posePool = 150, // 포즈 모드에서 포즈 검출할 시각 상위 후보 수
     int topN = 60,
-    double minVisual = 0.5,
+    double minVisual = 0.5, // 포즈 없을 때 시각 하한
+    double minPose = 0.5, // 포즈 모드에서 자세 유사도 하한
     void Function(double progress)? onProgress,
   }) async {
     final refSig = ImageHash.signatureOf(refBytes);
     if (refSig == null) return const [];
 
-    final detector = FaceDetector(
-      options: FaceDetectorOptions(performanceMode: FaceDetectorMode.fast),
+    final detector = PoseDetector(
+      options: PoseDetectorOptions(mode: PoseDetectionMode.single),
     );
     try {
-      // 기준 사진 얼굴 검출 → 모드 결정.
-      final refFace = await _detectProfile(detector, refBytes);
-      final faceMode = refFace != null && refFace.count > 0;
+      // 기준 사진 포즈 검출 → 모드 결정.
+      final refPose = await _detectPose(detector, refBytes);
+      final poseMode = refPose != null && refPose.length >= 3;
 
       // 갤러리 최근 N장.
       final paths = await PhotoManager.getAssetPathList(
@@ -85,8 +93,8 @@ class SimilarPhotoFinder {
       if (count == 0) return const [];
       final assets = await all.getAssetListRange(start: 0, end: count);
 
-      // ── 1단계 recall: 시각 시그니처 ──
-      final recallSpan = faceMode ? 0.4 : 1.0;
+      // ── 1단계 recall: 시각 시그니처(빠르게 후보 추리기) ──
+      final recallSpan = poseMode ? 0.4 : 1.0;
       final scored = <_Scored>[];
       for (var i = 0; i < assets.length; i++) {
         final Uint8List? thumb =
@@ -102,8 +110,8 @@ class SimilarPhotoFinder {
       }
       scored.sort((a, b) => b.visual.compareTo(a.visual));
 
-      // 얼굴 없는 기준: 시각 유사도로만.
-      if (!faceMode) {
+      // 포즈가 없는 기준: 시각 유사도로만.
+      if (!poseMode) {
         onProgress?.call(1);
         return scored
             .where((s) => s.visual >= minVisual)
@@ -112,20 +120,23 @@ class SimilarPhotoFinder {
             .toList();
       }
 
-      // ── 2단계: 얼굴 게이팅 + 재랭킹 (얼굴 있는 사진만 통과) ──
-      final pool = scored.take(facePool).toList();
+      // ── 2단계: 포즈 검출 + 자세 유사도 재랭킹 ──
+      final pool = scored.take(posePool).toList();
       final matches = <SimilarMatch>[];
       for (var i = 0; i < pool.length; i++) {
         final Uint8List? bytes = await pool[i]
             .asset
-            .thumbnailDataWithSize(const ThumbnailSize(320, 320));
+            .thumbnailDataWithSize(const ThumbnailSize(384, 384));
         if (bytes != null) {
-          final cf = await _detectProfile(detector, bytes);
-          if (cf != null && cf.count > 0) {
-            final align = _faceAlign(refFace, cf);
-            // 얼굴 정합 55% + 시각 45% — 기준마다 순위가 달라지도록 시각도 반영.
-            final score = (0.55 * align + 0.45 * pool[i].visual).clamp(0.0, 1.0);
-            matches.add(SimilarMatch(pool[i].asset, score));
+          final cand = await _detectPose(detector, bytes);
+          if (cand != null && cand.length >= 3) {
+            final poseSim = _poseSimilarity(refPose, cand);
+            if (poseSim >= minPose) {
+              // 자세 80% + 시각 20%.
+              final score =
+                  (0.8 * poseSim + 0.2 * pool[i].visual).clamp(0.0, 1.0);
+              matches.add(SimilarMatch(pool[i].asset, score));
+            }
           }
         }
         onProgress?.call(0.4 + 0.6 * (i + 1) / pool.length);
@@ -138,33 +149,33 @@ class SimilarPhotoFinder {
     }
   }
 
-  /// 바이트 → 얼굴 프로필(정규화 박스). 얼굴 없으면 빈 프로필, 실패 시 null.
-  Future<_FaceProfile?> _detectProfile(
-      FaceDetector detector, Uint8List bytes) async {
+  /// 바이트 → 뼈 방향 단위벡터 맵(뼈이름 → [ux, uy]). 사람/포즈 없으면 빈 맵,
+  /// 실패 시 null. 신뢰도 0.5 미만 관절은 제외.
+  Future<Map<String, List<double>>?> _detectPose(
+      PoseDetector detector, Uint8List bytes) async {
     File? tmp;
     try {
       final dir = await getTemporaryDirectory();
-      tmp = File(p.join(dir.path, 'mlkit_face_scan.jpg'));
+      tmp = File(p.join(dir.path, 'mlkit_pose_scan.jpg'));
       await tmp.writeAsBytes(bytes, flush: true);
-      final faces =
+      final poses =
           await detector.processImage(InputImage.fromFilePath(tmp.path));
-      if (faces.isEmpty) return _FaceProfile(const []);
+      if (poses.isEmpty) return <String, List<double>>{};
 
-      final decoded = img.decodeImage(bytes);
-      final w = (decoded?.width ?? 1).toDouble();
-      final h = (decoded?.height ?? 1).toDouble();
-      final minDim = math.min(w, h);
-      final boxes = <List<double>>[];
-      for (final f in faces) {
-        final r = f.boundingBox;
-        boxes.add([
-          r.center.dx / w,
-          r.center.dy / h,
-          (r.width.abs() / minDim).clamp(0.0, 1.0),
-        ]);
+      final lm = poses.first.landmarks;
+      final bones = <String, List<double>>{};
+      for (final bone in _bones) {
+        final a = lm[bone[0]];
+        final b = lm[bone[1]];
+        if (a == null || b == null) continue;
+        if (a.likelihood < 0.5 || b.likelihood < 0.5) continue;
+        final dx = b.x - a.x;
+        final dy = b.y - a.y;
+        final len = math.sqrt(dx * dx + dy * dy);
+        if (len < 1e-3) continue;
+        bones['${bone[0].name}_${bone[1].name}'] = [dx / len, dy / len];
       }
-      boxes.sort((a, b) => b[2].compareTo(a[2])); // 큰 얼굴 우선.
-      return _FaceProfile(boxes);
+      return bones;
     } catch (_) {
       return null;
     } finally {
@@ -174,23 +185,21 @@ class SimilarPhotoFinder {
     }
   }
 
-  /// 두 얼굴 프로필 정합도(0~1) — 개수 일치 + 위치/크기 매칭.
-  double _faceAlign(_FaceProfile ref, _FaceProfile cand) {
-    final countSim =
-        1 - (ref.count - cand.count).abs() / math.max(ref.count, cand.count);
-    final n = math.min(ref.count, cand.count);
-    var boxSum = 0.0;
-    for (var i = 0; i < n; i++) {
-      final a = ref.boxes[i];
-      final b = cand.boxes[i];
-      final dx = a[0] - b[0];
-      final dy = a[1] - b[1];
-      final posDist = math.sqrt(dx * dx + dy * dy) / 1.4142; // 0~1
-      final sizeDist = (a[2] - b[2]).abs(); // 0~1
-      boxSum += (1 - 0.7 * posDist - 0.3 * sizeDist).clamp(0.0, 1.0);
+  /// 두 자세의 유사도(0~1) — 공통 뼈들의 방향 코사인 평균. 공통 뼈가 3개 미만이면 0.
+  double _poseSimilarity(
+      Map<String, List<double>> a, Map<String, List<double>> b) {
+    var sum = 0.0;
+    var n = 0;
+    for (final key in a.keys) {
+      final vb = b[key];
+      if (vb == null) continue;
+      final va = a[key]!;
+      final cos = (va[0] * vb[0] + va[1] * vb[1]).clamp(-1.0, 1.0);
+      sum += (cos + 1) / 2; // [-1,1] → [0,1]
+      n++;
     }
-    final boxScore = n > 0 ? boxSum / n : 0.0;
-    return (countSim * (0.5 + 0.5 * boxScore)).clamp(0.0, 1.0);
+    if (n < 3) return 0;
+    return (sum / n).clamp(0.0, 1.0);
   }
 }
 

@@ -164,7 +164,7 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
             Text(
                 _progress < 0.4
                     ? '갤러리에서 비슷한 사진을 찾는 중…'
-                    : '사람(얼굴)을 분석하는 중…',
+                    : '자세(포즈)를 분석하는 중…',
                 style: TextStyle(
                     color: scheme.onSurface, fontWeight: FontWeight.w600)),
             const SizedBox(height: 4),
@@ -175,8 +175,8 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
       );
     }
     if (_matches.isEmpty) {
-      return _info(Icons.search_off, '비슷한 사진을 찾지 못했어요',
-          '다른 기준 사진으로 다시 시도하거나, 직접 골라서 채워보세요.');
+      return _info(Icons.search_off, '비슷한 자세의 사진을 찾지 못했어요',
+          '인물의 자세가 또렷하게 나온 사진을 기준으로 다시 시도하거나,\n직접 골라서 채워보세요.');
     }
     return GridView.builder(
       padding: const EdgeInsets.all(12),

@@ -189,11 +189,11 @@ class _BackfillScreenState extends ConsumerState<BackfillScreen> {
                 .bodyMedium
                 ?.copyWith(color: scheme.onSurfaceVariant)),
         const SizedBox(height: 24),
-        // 추천: 한 장 고르면 닮은 사진을 자동으로 모아준다.
+        // 추천: 한 장 고르면 같은 자세(포즈) 사진을 자동으로 모아준다.
         _ChooserCard(
           icon: Icons.image_search,
-          title: '비슷한 사진 자동으로 찾기',
-          subtitle: '기준 사진 한 장만 고르면, 갤러리에서 같은 포즈·장소·인물의\n닮은 사진을 모아서 보여줘요.',
+          title: '비슷한 포즈 사진 자동으로 찾기',
+          subtitle: '기준 사진 한 장만 고르면, 갤러리에서 비슷한 자세(포즈)로\n찍힌 사진을 모아서 보여줘요.',
           badge: '추천',
           highlight: true,
           onTap: _findSimilar,
