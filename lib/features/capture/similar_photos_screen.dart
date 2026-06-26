@@ -37,6 +37,7 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
   bool _loading = true;
   bool _denied = false;
   bool _failed = false;
+  bool _refining = false; // 1차 결과는 떴고, 포즈 분석으로 정렬을 다듬는 중.
   double _progress = 0;
   List<SimilarMatch> _matches = const [];
   final Set<String> _selected = {};
@@ -71,11 +72,23 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
         onProgress: (p) {
           if (mounted) setState(() => _progress = p);
         },
+        // 1차 결과가 나오는 즉시 그리드를 띄운다 — 스피너에 갇히지 않게.
+        // 이후 포즈 분석이 끝나면 같은 콜백이 더 정교한 정렬로 갱신한다.
+        onPartial: (partial) {
+          if (mounted) {
+            setState(() {
+              _matches = partial;
+              _loading = false;
+              _refining = true;
+            });
+          }
+        },
       );
       if (mounted) {
         setState(() {
           _matches = matches;
           _loading = false;
+          _refining = false;
         });
       }
     } catch (e) {
@@ -238,6 +251,7 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
     return Column(
       children: [
         if (widget.limitedAccess) _limitedBanner(),
+        if (_refining) _refiningBanner(),
         Expanded(
           child: GridView.builder(
             padding: const EdgeInsets.all(12),
@@ -295,6 +309,31 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// 1차 결과는 떴고 포즈 분석으로 정렬을 다듬는 중임을 알리는 얇은 배너.
+  Widget _refiningBanner() {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      color: scheme.surfaceContainerHighest,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+                strokeWidth: 2, color: scheme.primary),
+          ),
+          const SizedBox(width: 10),
+          Text('자세(포즈)를 분석해 더 정확한 순서로 정리하는 중…  ${(_progress * 100).round()}%',
+              style: TextStyle(
+                  color: scheme.onSurfaceVariant, fontSize: 12.5)),
+        ],
+      ),
     );
   }
 

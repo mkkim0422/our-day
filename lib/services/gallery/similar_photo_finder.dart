@@ -78,15 +78,24 @@ class SimilarPhotoFinder {
   Future<List<SimilarMatch>> findSimilar(
     Uint8List refBytes, {
     // 실유저는 사진이 수만 장. getAssetListRange(0, N)로 **최근 N장만** 가져와
-    // 총 장수와 무관하게 시간·메모리를 N에 묶는다(전체를 훑지 않음).
-    // 네이티브 디코딩이 장당 ~1.3ms라 500장도 1초 미만. 포즈 검출(ML)이 시간을
-    // 지배하므로 상위 45장만 재랭킹한다.
-    int scanLimit = 500,
-    int posePool = 45,
+    // 총 장수와 무관하게 시간·메모리를 N에 묶는다(전체를 훑지 않음). 1단계 recall은
+    // 가벼우니 폭넓게 보고(연도별 타임랩스는 과거 사진까지 닿아야 하므로), 무거운
+    // 포즈 ML은 상위 후보 소수만 돌린다.
+    int scanLimit = 800,
+    int posePool = 30,
     int topN = 60,
     double minVisual = 0.5, // 포즈 없을 때 시각 하한
+    // 전체 작업 벽시계 예산 — 사진이 수만 장이어도 이 시간이 지나면 "지금까지 찾은
+    // 최선"을 돌려주고 끝낸다. 무한 멈춤을 원천 차단하는 핵심 안전장치.
+    Duration budget = const Duration(seconds: 70),
     void Function(double progress)? onProgress,
+    // 1단계 결과가 나오는 즉시 화면에 흘려보낸다(점진 표시) → 전 과정이 끝날 때까지
+    // 빈 스피너로 기다리지 않게. 구글포토식 "결과 먼저, 정렬은 계속 정교화".
+    void Function(List<SimilarMatch> partial)? onPartial,
   }) async {
+    final clock = Stopwatch()..start();
+    bool overBudget() => clock.elapsed >= budget;
+
     final detector = PoseDetector(
       options: PoseDetectorOptions(mode: PoseDetectionMode.single),
     );
@@ -94,7 +103,7 @@ class SimilarPhotoFinder {
       onProgress?.call(0.01); // 즉시 움직임(0%에 갇힌 것처럼 안 보이게).
       final tmpDir = await getTemporaryDirectory();
 
-      // 갤러리 최근 N장(메타데이터만 — 총 장수 수만이어도 빠름).
+      // 갤러리 앨범 목록 — 네이티브 호출이라 타임아웃으로 감싼다.
       final paths = await PhotoManager.getAssetPathList(
         type: RequestType.image,
         onlyAll: true,
@@ -102,21 +111,29 @@ class SimilarPhotoFinder {
           onTimeout: () => <AssetPathEntity>[]);
       if (paths.isEmpty) return const [];
       final all = paths.first;
-      final total = await all.assetCountAsync;
+
+      // ★ 총 장수·범위 조회도 만장 갤러리에선 느릴 수 있어 타임아웃 필수.
+      //   (여기 멈춤이 "사진이 너무 많아서" 프리징되던 가장 유력한 지점이었다.)
+      final total = await all.assetCountAsync
+          .timeout(const Duration(seconds: 8), onTimeout: () => 0);
       final count = math.min(total, scanLimit);
       if (count == 0) return const [];
-      final assets = await all.getAssetListRange(start: 0, end: count);
+      final assets = await all
+          .getAssetListRange(start: 0, end: count)
+          .timeout(const Duration(seconds: 12),
+              onTimeout: () => <AssetEntity>[]);
+      if (assets.isEmpty) return const [];
       debugPrint('[similar] scan ${assets.length} of $total');
 
       final refSig = await ImageHash.signatureFromBytes(refBytes);
       if (refSig == null) return const []; // 기준 사진 디코딩 실패.
 
-      // ── 1단계 recall: dart:ui 네이티브 디코딩 시그니처(빠름). 진행률 0.01→0.5 ──
+      // ── 1단계 recall: dart:ui 네이티브 디코딩 시그니처(빠름). 진행률 0.01→0.45 ──
       // 모든 단계에 타임아웃 → 클라우드 전용/손상 등 한 장이 막혀도 전체가 안 멈춤.
-      // (recall을 먼저 돌려 진행률이 0%에서 바로 움직이고, 느린 ML 포즈는 50% 이후로.)
       final scored = <_Scored>[];
       const batch = 16;
       for (var start = 0; start < assets.length; start += batch) {
+        if (overBudget()) break; // 예산 초과 시 지금까지로 마무리.
         final end = math.min(start + batch, assets.length);
         final sub = assets.sublist(start, end);
         final thumbs = await Future.wait(sub.map((a) => _safeThumb(a, 100)));
@@ -132,32 +149,41 @@ class SimilarPhotoFinder {
                 _Scored(sub[k], ImageHash.signatureSimilarity(refSig, s)));
           }
         }
-        onProgress?.call(0.01 + 0.49 * end / assets.length);
+        onProgress?.call(0.01 + 0.44 * end / assets.length);
+        // UI 스레드가 스피너·진행률을 그릴 틈을 준다(메인 스레드 포화/ANR 방지).
+        await Future<void>.delayed(Duration.zero);
       }
       debugPrint('[similar] recall done: ${scored.length} scored');
       if (scored.isEmpty) return const [];
       scored.sort((a, b) => b.visual.compareTo(a.visual));
 
-      // ── 기준 포즈 검출(타임아웃). 0%가 아니라 ~50% 지점에서 수행 ──
-      final refPose = await _detectPose(detector, refBytes, tmpDir);
+      // 1단계 결과를 **즉시** 화면에 흘려보낸다 — 사용자는 바로 사진을 본다.
+      List<SimilarMatch> recallView() => scored
+          .where((s) => s.visual >= minVisual)
+          .take(topN)
+          .map((s) => SimilarMatch(s.asset, s.visual))
+          .toList();
+      onPartial?.call(recallView());
+
+      // ── 기준 포즈 검출 ──
+      final refPose =
+          overBudget() ? null : await _detectPose(detector, refBytes, tmpDir);
       final poseMode = refPose != null && refPose.length >= 3;
       debugPrint('[similar] refPose=${refPose?.length} poseMode=$poseMode');
 
-      // 포즈가 없는 기준: 시각 유사도로만.
+      // 포즈가 없는 기준(또는 예산 초과): 시각 유사도로만.
       if (!poseMode) {
         onProgress?.call(1);
-        return scored
-            .where((s) => s.visual >= minVisual)
-            .take(topN)
-            .map((s) => SimilarMatch(s.asset, s.visual))
-            .toList();
+        return recallView();
       }
 
-      // ── 2단계: 포즈 재랭킹. 진행률 0.5→1 ──
-      // 포즈를 못 잡은 후보도 탈락이 아니라 데모트(거의 똑같은 사진을 살림).
+      // ── 2단계: 상위 후보만 포즈 재랭킹(0.45→1). 예산 초과 시 중단하고,
+      //    포즈를 못 돌린 후보는 recall 점수로 살려 결과 누락 0. ──
       final pool = scored.take(posePool).toList();
       final matches = <SimilarMatch>[];
+      final processed = <String>{};
       for (var i = 0; i < pool.length; i++) {
+        if (overBudget()) break;
         final v = pool[i].visual;
         double score;
         final bytes = await _safeThumb(pool[i].asset, 512);
@@ -170,14 +196,25 @@ class SimilarPhotoFinder {
           score = 0.6 * v;
         }
         matches.add(SimilarMatch(pool[i].asset, score));
-        onProgress?.call(0.5 + 0.5 * (i + 1) / pool.length);
+        processed.add(pool[i].asset.id);
+        onProgress?.call(0.45 + 0.55 * (i + 1) / pool.length);
+        await Future<void>.delayed(Duration.zero);
       }
+
+      // 포즈를 못 돌린(예산 초과/풀 밖) 후보도 recall 점수로 합류 — 누락 방지.
+      for (final s in scored) {
+        if (processed.contains(s.asset.id) || s.visual < minVisual) continue;
+        matches.add(SimilarMatch(s.asset, 0.6 * s.visual));
+      }
+
       matches
         ..removeWhere((m) => m.similarity < 0.35)
         ..sort((a, b) => b.similarity.compareTo(a.similarity));
       onProgress?.call(1);
+      final result = matches.length > topN ? matches.sublist(0, topN) : matches;
+      onPartial?.call(result);
       debugPrint('[similar] done: ${matches.length} matches');
-      return matches.length > topN ? matches.sublist(0, topN) : matches;
+      return result;
     } finally {
       await detector.close();
     }
