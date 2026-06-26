@@ -1,7 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:path/path.dart' as p;
@@ -90,44 +91,41 @@ class SimilarPhotoFinder {
       options: PoseDetectorOptions(mode: PoseDetectionMode.single),
     );
     try {
+      onProgress?.call(0.01); // 즉시 움직임(0%에 갇힌 것처럼 안 보이게).
       final tmpDir = await getTemporaryDirectory();
-      // 기준 사진 포즈 검출 → 모드 결정.
-      final refPose = await _detectPose(detector, refBytes, tmpDir);
-      final poseMode = refPose != null && refPose.length >= 3;
 
-      // 갤러리 최근 N장.
+      // 갤러리 최근 N장(메타데이터만 — 총 장수 수만이어도 빠름).
       final paths = await PhotoManager.getAssetPathList(
         type: RequestType.image,
         onlyAll: true,
-      );
+      ).timeout(const Duration(seconds: 10),
+          onTimeout: () => <AssetPathEntity>[]);
       if (paths.isEmpty) return const [];
       final all = paths.first;
       final total = await all.assetCountAsync;
       final count = math.min(total, scanLimit);
       if (count == 0) return const [];
       final assets = await all.getAssetListRange(start: 0, end: count);
-
-      // ── 1단계 recall ──
-      // dart:ui 네이티브 디코더로 시그니처를 계산한다. 순수 Dart image 패키지는
-      // 일부 입력에서 멈추거나(hang) 매우 느려 화면이 특정 %에서 굳었다.
-      // 네이티브 디코딩은 빠르고 백그라운드라 UI를 막지 않으며, batch마다 진행률을
-      // 갱신해 0→recallSpan으로 부드럽게 오른다.
-      final recallSpan = poseMode ? 0.4 : 1.0;
+      debugPrint('[similar] scan ${assets.length} of $total');
 
       final refSig = await ImageHash.signatureFromBytes(refBytes);
       if (refSig == null) return const []; // 기준 사진 디코딩 실패.
 
+      // ── 1단계 recall: dart:ui 네이티브 디코딩 시그니처(빠름). 진행률 0.01→0.5 ──
+      // 모든 단계에 타임아웃 → 클라우드 전용/손상 등 한 장이 막혀도 전체가 안 멈춤.
+      // (recall을 먼저 돌려 진행률이 0%에서 바로 움직이고, 느린 ML 포즈는 50% 이후로.)
       final scored = <_Scored>[];
       const batch = 16;
       for (var start = 0; start < assets.length; start += batch) {
         final end = math.min(start + batch, assets.length);
         final sub = assets.sublist(start, end);
-        // 썸네일 수집(동시) → 곧바로 네이티브 디코딩·시그니처 비교(동시).
-        final thumbs = await Future.wait(
-            sub.map((a) => a.thumbnailDataWithSize(_fitSize(a, 100))));
+        final thumbs = await Future.wait(sub.map((a) => a
+            .thumbnailDataWithSize(_fitSize(a, 100))
+            .timeout(const Duration(seconds: 4), onTimeout: () => null)));
         final sigs = await Future.wait(thumbs.map((t) => t == null
             ? Future<PhotoSignature?>.value(null)
-            : ImageHash.signatureFromBytes(t)));
+            : ImageHash.signatureFromBytes(t)
+                .timeout(const Duration(seconds: 3), onTimeout: () => null)));
         for (var k = 0; k < sub.length; k++) {
           final s = sigs[k];
           if (s != null) {
@@ -135,10 +133,16 @@ class SimilarPhotoFinder {
                 _Scored(sub[k], ImageHash.signatureSimilarity(refSig, s)));
           }
         }
-        onProgress?.call(recallSpan * end / assets.length);
+        onProgress?.call(0.01 + 0.49 * end / assets.length);
       }
+      debugPrint('[similar] recall done: ${scored.length} scored');
       if (scored.isEmpty) return const [];
       scored.sort((a, b) => b.visual.compareTo(a.visual));
+
+      // ── 기준 포즈 검출(타임아웃). 0%가 아니라 ~50% 지점에서 수행 ──
+      final refPose = await _detectPose(detector, refBytes, tmpDir);
+      final poseMode = refPose != null && refPose.length >= 3;
+      debugPrint('[similar] refPose=${refPose?.length} poseMode=$poseMode');
 
       // 포즈가 없는 기준: 시각 유사도로만.
       if (!poseMode) {
@@ -150,35 +154,33 @@ class SimilarPhotoFinder {
             .toList();
       }
 
-      // ── 2단계: 포즈 검출 + 자세 유사도 재랭킹 ──
-      // 중요: 포즈를 못 잡은 후보도 **탈락이 아니라 데모트**(시각 점수로 살림).
-      // 그래야 포즈 검출이 흔들려도 "거의 똑같은 사진"(시각 유사도 높음)은 반드시
-      // 노출된다. 포즈가 잡히면 자세 유사도로 크게 끌어올린다.
+      // ── 2단계: 포즈 재랭킹. 진행률 0.5→1 ──
+      // 포즈를 못 잡은 후보도 탈락이 아니라 데모트(거의 똑같은 사진을 살림).
       final pool = scored.take(posePool).toList();
       final matches = <SimilarMatch>[];
       for (var i = 0; i < pool.length; i++) {
         final v = pool[i].visual;
         double score;
-        final Uint8List? bytes = await pool[i]
+        final bytes = await pool[i]
             .asset
-            .thumbnailDataWithSize(_fitSize(pool[i].asset, 512));
+            .thumbnailDataWithSize(_fitSize(pool[i].asset, 512))
+            .timeout(const Duration(seconds: 4), onTimeout: () => null);
         final cand =
             bytes == null ? null : await _detectPose(detector, bytes, tmpDir);
         if (cand != null && cand.length >= 3) {
           final poseSim = _poseSimilarity(refPose, cand);
-          score = (0.55 * poseSim + 0.45 * v).clamp(0.0, 1.0); // 자세 55% + 시각 45%
+          score = (0.55 * poseSim + 0.45 * v).clamp(0.0, 1.0);
         } else {
-          // 포즈 미검출 → 탈락이 아니라 데모트. 거의 똑같은 사진(시각 높음)은
-          // 포즈를 못 잡아도 충분히 살아남도록 0.6 배율(과한 침몰 방지).
           score = 0.6 * v;
         }
         matches.add(SimilarMatch(pool[i].asset, score));
-        onProgress?.call(0.4 + 0.6 * (i + 1) / pool.length);
+        onProgress?.call(0.5 + 0.5 * (i + 1) / pool.length);
       }
       matches
         ..removeWhere((m) => m.similarity < 0.35)
         ..sort((a, b) => b.similarity.compareTo(a.similarity));
       onProgress?.call(1);
+      debugPrint('[similar] done: ${matches.length} matches');
       return matches.length > topN ? matches.sublist(0, topN) : matches;
     } finally {
       await detector.close();
@@ -208,8 +210,10 @@ class SimilarPhotoFinder {
     try {
       tmp = File(p.join(tmpDir.path, 'mlkit_pose_scan.jpg'));
       await tmp.writeAsBytes(bytes, flush: true);
-      final poses =
-          await detector.processImage(InputImage.fromFilePath(tmp.path));
+      // 타임아웃 — ML Kit 포즈 검출이 막혀도 전체 스캔이 멈추지 않게.
+      final poses = await detector
+          .processImage(InputImage.fromFilePath(tmp.path))
+          .timeout(const Duration(seconds: 8), onTimeout: () => const <Pose>[]);
       if (poses.isEmpty) return <String, List<double>>{};
 
       final lm = poses.first.landmarks;

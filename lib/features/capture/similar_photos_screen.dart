@@ -187,7 +187,7 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
             const CircularProgressIndicator(),
             const SizedBox(height: 16),
             Text(
-                _progress < 0.4
+                _progress < 0.5
                     ? '갤러리에서 비슷한 사진을 찾는 중…'
                     : '자세(포즈)를 분석하는 중…',
                 style: TextStyle(
