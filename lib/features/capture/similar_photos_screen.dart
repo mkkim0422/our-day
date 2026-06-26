@@ -78,11 +78,15 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
     final storage = ref.read(photoStorageProvider);
     final captures = ref.read(captureRepositoryProvider);
     var added = 0;
+    var failed = 0;
     try {
       for (final m in _matches.where((m) => _selected.contains(m.asset.id))) {
-        final file = await m.asset.file;
-        if (file == null) continue;
         try {
+          final file = await m.asset.file;
+          if (file == null) {
+            failed++;
+            continue;
+          }
           final stored = await storage.saveFromFile(file.path);
           await captures.create(
             project: widget.project,
@@ -92,7 +96,9 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
             capturedAt: m.asset.createDateTime,
           );
           added++;
-        } catch (_) {}
+        } catch (_) {
+          failed++;
+        }
       }
       if (added > 0) {
         final all = await captures.listByProject(widget.project.id);
@@ -107,7 +113,20 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
     } finally {
       if (mounted) setState(() => _importing = false);
     }
-    if (mounted) Navigator.of(context).pop(added);
+    if (!mounted) return;
+    // 한 장도 못 넣었으면 화면을 닫지 않고 안내(다시 시도할 수 있게).
+    if (added == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('사진을 추가하지 못했어요. 다시 시도해 주세요.')),
+      );
+      return;
+    }
+    if (failed > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$added장 추가 완료 ($failed장은 실패해 건너뜀)')),
+      );
+    }
+    Navigator.of(context).pop(added);
   }
 
   @override
@@ -134,7 +153,9 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
                       : const Icon(Icons.download_rounded),
                   label: Text(_importing
                       ? '가져오는 중…'
-                      : '${_selected.length}장 가져오기'),
+                      : (_selected.isEmpty
+                          ? '사진을 선택해 주세요'
+                          : '${_selected.length}장 가져오기')),
                 ),
               ),
             ),

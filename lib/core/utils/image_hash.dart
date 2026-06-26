@@ -98,7 +98,7 @@ class ImageHash {
     }
     final blocks = a.length / 3;
     const maxDist = 441.6729; // sqrt(255^2 * 3)
-    return 1 - (sum / blocks) / maxDist;
+    return (1 - (sum / blocks) / maxDist).clamp(0.0, 1.0);
   }
 
   /// 구조 60% + 컬러 40% 결합 유사도(0~1).

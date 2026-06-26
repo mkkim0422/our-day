@@ -47,8 +47,9 @@ const _bones = <List<PoseLandmarkType>>[
 /// 뽑아, 연결된 관절의 **방향 벡터(뼈 각도)** 로 정규화해 비교한다. 위치·크기·
 /// 화면 내 인물 크기에 무관하게 "자세가 얼마나 닮았는지"만 본다.
 ///
-///  - 기준 사진에서 **포즈가 잡히면**: 후보를 포즈 검출로 걸러 사람 자세가 있는
-///    사진만 남기고, 자세 유사도(80%) + 시각 유사도(20%)로 재랭킹.
+///  - 기준 사진에서 **포즈가 잡히면**: 후보에 포즈 검출을 돌려 자세 유사도(60%) +
+///    시각 유사도(40%)로 재랭킹. 포즈를 못 잡은 후보는 탈락이 아니라 데모트해
+///    "거의 똑같은 사진"이 항상 노출되게 한다.
 ///  - 포즈가 없으면: 시각 시그니처(dHash 구조 + 컬러 블록)로만 정렬.
 class SimilarPhotoFinder {
   const SimilarPhotoFinder();
@@ -64,7 +65,7 @@ class SimilarPhotoFinder {
   Future<List<SimilarMatch>> findSimilar(
     Uint8List refBytes, {
     int scanLimit = 600,
-    int posePool = 150, // 포즈 모드에서 포즈 검출할 시각 상위 후보 수
+    int posePool = 100, // 포즈 모드에서 포즈 검출할 시각 상위 후보 수(대기시간 고려)
     int topN = 60,
     double minVisual = 0.5, // 포즈 없을 때 시각 하한
     void Function(double progress)? onProgress,
@@ -76,8 +77,9 @@ class SimilarPhotoFinder {
       options: PoseDetectorOptions(mode: PoseDetectionMode.single),
     );
     try {
+      final tmpDir = await getTemporaryDirectory();
       // 기준 사진 포즈 검출 → 모드 결정.
-      final refPose = await _detectPose(detector, refBytes);
+      final refPose = await _detectPose(detector, refBytes, tmpDir);
       final poseMode = refPose != null && refPose.length >= 3;
 
       // 갤러리 최근 N장.
@@ -97,7 +99,7 @@ class SimilarPhotoFinder {
       final scored = <_Scored>[];
       for (var i = 0; i < assets.length; i++) {
         final Uint8List? thumb =
-            await assets[i].thumbnailDataWithSize(const ThumbnailSize(96, 96));
+            await assets[i].thumbnailDataWithSize(_fitSize(assets[i], 100));
         if (thumb != null) {
           final sig = ImageHash.signatureOf(thumb);
           if (sig != null) {
@@ -130,20 +132,22 @@ class SimilarPhotoFinder {
         double score;
         final Uint8List? bytes = await pool[i]
             .asset
-            .thumbnailDataWithSize(const ThumbnailSize(512, 512));
+            .thumbnailDataWithSize(_fitSize(pool[i].asset, 512));
         final cand =
-            bytes == null ? null : await _detectPose(detector, bytes);
+            bytes == null ? null : await _detectPose(detector, bytes, tmpDir);
         if (cand != null && cand.length >= 3) {
           final poseSim = _poseSimilarity(refPose, cand);
-          score = (0.6 * poseSim + 0.4 * v).clamp(0.0, 1.0); // 자세 60% + 시각 40%
+          score = (0.55 * poseSim + 0.45 * v).clamp(0.0, 1.0); // 자세 55% + 시각 45%
         } else {
-          score = 0.5 * v; // 포즈 미검출 → 데모트(시각만)
+          // 포즈 미검출 → 탈락이 아니라 데모트. 거의 똑같은 사진(시각 높음)은
+          // 포즈를 못 잡아도 충분히 살아남도록 0.6 배율(과한 침몰 방지).
+          score = 0.6 * v;
         }
         matches.add(SimilarMatch(pool[i].asset, score));
         onProgress?.call(0.4 + 0.6 * (i + 1) / pool.length);
       }
       matches
-        ..removeWhere((m) => m.similarity < 0.4)
+        ..removeWhere((m) => m.similarity < 0.35)
         ..sort((a, b) => b.similarity.compareTo(a.similarity));
       onProgress?.call(1);
       return matches.length > topN ? matches.sublist(0, topN) : matches;
@@ -152,14 +156,28 @@ class SimilarPhotoFinder {
     }
   }
 
+  /// 원본 종횡비를 보존한 썸네일 크기(긴 변 [longSide]). dHash 비교 시 기준 사진
+  /// (전체 비율)과 후보가 **같은 구도**가 되도록 — 정사각 크롭이면 같은 사진도
+  /// 어긋난다. dims를 모르면 정사각으로 폴백.
+  ThumbnailSize _fitSize(AssetEntity a, int longSide) {
+    final w = a.orientatedWidth;
+    final h = a.orientatedHeight;
+    if (w <= 0 || h <= 0) return ThumbnailSize.square(longSide);
+    if (w >= h) {
+      final th = (longSide * h / w).round().clamp(1, longSide);
+      return ThumbnailSize(longSide, th);
+    }
+    final tw = (longSide * w / h).round().clamp(1, longSide);
+    return ThumbnailSize(tw, longSide);
+  }
+
   /// 바이트 → 뼈 방향 단위벡터 맵(뼈이름 → [ux, uy]). 사람/포즈 없으면 빈 맵,
   /// 실패 시 null. 신뢰도 0.5 미만 관절은 제외.
   Future<Map<String, List<double>>?> _detectPose(
-      PoseDetector detector, Uint8List bytes) async {
+      PoseDetector detector, Uint8List bytes, Directory tmpDir) async {
     File? tmp;
     try {
-      final dir = await getTemporaryDirectory();
-      tmp = File(p.join(dir.path, 'mlkit_pose_scan.jpg'));
+      tmp = File(p.join(tmpDir.path, 'mlkit_pose_scan.jpg'));
       await tmp.writeAsBytes(bytes, flush: true);
       final poses =
           await detector.processImage(InputImage.fromFilePath(tmp.path));
