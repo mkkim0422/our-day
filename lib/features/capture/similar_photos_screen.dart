@@ -308,7 +308,7 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
       case _Phase.results:
         if (_matches.isEmpty) {
           return _info(Icons.search_off, '비슷한 자세의 사진을 찾지 못했어요',
-              '인물의 자세가 또렷하게 나온 사진을 기준으로 다시 시도하거나,\n직접 골라서 채워보세요.');
+              '인물의 자세가 또렷하게 나온 사진으로 다시 시도하거나, 직접 골라서 채워보세요.');
         }
         return Column(
           children: [

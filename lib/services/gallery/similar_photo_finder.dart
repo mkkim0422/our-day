@@ -127,7 +127,6 @@ class SimilarPhotoFinder {
     // 표본 32장을 전 기간에서 골라 recall과 같은 작업(썸네일+시그니처)을 재본다.
     final sample = await _collectSpread(all, total, math.min(total, 32));
     final ms = await _probeMsPerPhoto(sample);
-    debugPrint('[similar] survey total=$total ms/photo=${ms.toStringAsFixed(1)}');
     return GallerySurvey(
         total: total, msPerPhoto: ms, quickCount: math.min(total, 1500));
   }
@@ -136,17 +135,17 @@ class SimilarPhotoFinder {
   Future<double> _probeMsPerPhoto(List<AssetEntity> sample) async {
     if (sample.isEmpty) return 30;
     final sw = Stopwatch()..start();
-    const batch = 16;
     var n = 0;
+    const batch = 16;
     for (var start = 0; start < sample.length; start += batch) {
       final end = math.min(start + batch, sample.length);
       final sub = sample.sublist(start, end);
+      // 실제 recall과 동일 경로: 썸네일 동시 가져오기 + dart:ui 네이티브 디코딩.
       final thumbs = await Future.wait(sub.map((a) => _safeThumb(a, 100)));
-      await Future.wait(thumbs.map((t) => t == null
-          ? Future<PhotoSignature?>.value(null)
-          : ImageHash.signatureFromBytes(t)
-              .timeout(const Duration(seconds: 3), onTimeout: () => null)
-              .catchError((_) => null)));
+      await ImageHash.signaturesFromThumbs(thumbs)
+          .timeout(const Duration(seconds: 8),
+              onTimeout: () => <PhotoSignature?>[])
+          .catchError((_) => <PhotoSignature?>[]);
       n += sub.length;
     }
     sw.stop();
@@ -246,25 +245,34 @@ class SimilarPhotoFinder {
       // 최신 N장이 아니라 **전 기간에 분산**해 가져온다(연도별 커버리지).
       final assets = await _collectSpread(all, total, math.min(total, scanLimit));
       if (assets.isEmpty) return const [];
-      debugPrint('[similar] scan ${assets.length} of $total');
 
-      final refSig = await ImageHash.signatureFromBytes(refBytes);
+      // ── 1단계 recall ──
+      // 디코딩은 **dart:ui 네이티브**(엔진 워커 스레드)에서 — 메인 UI 비차단.
+      // 느리거나 손상된 한 장이 있어도 메인은 자유라 아래 타임아웃이 정상 작동해
+      // 막힌 배치만 건너뛰고 '중지'·진행이 항상 살아있다(ANR 없음).
+      final refSig =
+          (await ImageHash.signaturesFromThumbs(<Uint8List?>[refBytes])
+                  .timeout(const Duration(seconds: 8),
+                      onTimeout: () => <PhotoSignature?>[null])
+                  .catchError((_) => <PhotoSignature?>[null]))
+              .first;
       if (refSig == null) return const []; // 기준 사진 디코딩 실패.
 
-      // ── 1단계 recall: dart:ui 네이티브 디코딩 시그니처(빠름). 진행률 0.01→0.45 ──
-      // 모든 단계에 타임아웃 → 클라우드 전용/손상 등 한 장이 막혀도 전체가 안 멈춤.
       final scored = <_Scored>[];
       const batch = 16;
       for (var start = 0; start < assets.length; start += batch) {
         if (stop()) break; // 중지/예산초과 시 지금까지로 마무리.
         final end = math.min(start + batch, assets.length);
         final sub = assets.sublist(start, end);
+        // 썸네일 가져오기는 플랫폼 채널 — 16장 동시에(빠름).
         final thumbs = await Future.wait(sub.map((a) => _safeThumb(a, 100)));
-        final sigs = await Future.wait(thumbs.map((t) => t == null
-            ? Future<PhotoSignature?>.value(null)
-            : ImageHash.signatureFromBytes(t)
-                .timeout(const Duration(seconds: 3), onTimeout: () => null)
-                .catchError((_) => null)));
+        // 디코딩은 dart:ui 네이티브. 막힌 배치는 타임아웃으로 통째 건너뜀(메인은 자유).
+        final sigs = await ImageHash.signaturesFromThumbs(thumbs)
+            .timeout(const Duration(seconds: 8),
+                onTimeout: () =>
+                    List<PhotoSignature?>.filled(thumbs.length, null))
+            .catchError((_) =>
+                List<PhotoSignature?>.filled(thumbs.length, null));
         for (var k = 0; k < sub.length; k++) {
           final s = sigs[k];
           if (s != null) {
@@ -274,11 +282,8 @@ class SimilarPhotoFinder {
         }
         onProgress?.call(0.01 + 0.44 * end / assets.length);
         onScanned?.call(end, assets.length);
-        // UI 스레드가 스피너·진행률을 그릴 틈을 준다(메인 스레드 포화/ANR 방지).
         await Future<void>.delayed(Duration.zero);
       }
-      debugPrint('[similar] recall done: ${scored.length} scored '
-          'in ${clock.elapsedMilliseconds}ms');
       if (scored.isEmpty) return const [];
       scored.sort((a, b) => b.visual.compareTo(a.visual));
 
@@ -294,7 +299,6 @@ class SimilarPhotoFinder {
       final refPose =
           stop() ? null : await _detectPose(detector, refBytes, tmpDir);
       final poseMode = refPose != null && refPose.length >= 3;
-      debugPrint('[similar] refPose=${refPose?.length} poseMode=$poseMode');
 
       // 포즈가 없는 기준(또는 예산 초과): 시각 유사도로만.
       if (!poseMode) {
@@ -338,7 +342,6 @@ class SimilarPhotoFinder {
       onProgress?.call(1);
       final result = matches.length > topN ? matches.sublist(0, topN) : matches;
       onPartial?.call(result);
-      debugPrint('[similar] done: ${matches.length} matches');
       return result;
     } finally {
       // close()도 네이티브 호출 — 손상된 ML Kit에서 멈추지 않도록 타임아웃.

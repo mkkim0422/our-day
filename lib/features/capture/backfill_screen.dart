@@ -194,8 +194,8 @@ class _BackfillScreenState extends ConsumerState<BackfillScreen> {
         // 추천: 한 장 고르면 같은 자세(포즈) 사진을 자동으로 모아준다.
         _ChooserCard(
           icon: Icons.image_search,
-          title: '비슷한 포즈 사진 자동으로 찾기',
-          subtitle: '기준 사진 한 장만 고르면, 갤러리에서 비슷한 자세(포즈)로\n찍힌 사진을 모아서 보여줘요.',
+          title: '비슷한 포즈 찾기',
+          subtitle: '기준 사진 한 장만 고르면, 갤러리에서 비슷한 자세로 찍힌 사진을 자동으로 모아드려요.',
           badge: '추천',
           highlight: true,
           onTap: _findSimilar,
@@ -233,10 +233,12 @@ class _BackfillScreenState extends ConsumerState<BackfillScreen> {
       return;
     }
     // 전체/일부 허용 → 바로 기준 사진 선택 후 검색.
+    // 기준 사진은 **유사도 시그니처 계산용**(화면 표시 X)이라 작게 받는다.
+    // 대형 이미지를 순수 Dart로 디코딩하면 느려서(특히 저사양/에뮬레이터) 작게.
     final refImg = await _picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 1600,
-      imageQuality: 92,
+      maxWidth: 720,
+      imageQuality: 85,
     );
     if (refImg == null || !mounted) return;
     final added = await Navigator.of(context).push<int>(

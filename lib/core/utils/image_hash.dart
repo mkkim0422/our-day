@@ -36,23 +36,29 @@ class ImageHash {
   /// EXIF 회전을 먼저 적용(bakeOrientation)해 원본 세로 사진과 이미 회전 적용된
   /// 썸네일이 같은 방향으로 비교되도록 한다 — 안 하면 구도가 어긋나 오매칭.
   static PhotoSignature? signatureOf(Uint8List bytes) {
-    final raw = img.decodeImage(bytes);
-    if (raw == null) return null;
-    final decoded = img.bakeOrientation(raw);
-    final dhash = _dhashOf(decoded);
-    final blocks = img.copyResize(decoded,
-        width: 4, height: 4, interpolation: img.Interpolation.linear);
-    final color = Uint8List(48);
-    var k = 0;
-    for (var y = 0; y < 4; y++) {
-      for (var x = 0; x < 4; x++) {
-        final p = blocks.getPixel(x, y);
-        color[k++] = p.r.toInt();
-        color[k++] = p.g.toInt();
-        color[k++] = p.b.toInt();
+    try {
+      // decodeImage는 손상·미지원 포맷에서 null이 아니라 **예외**를 던질 수 있다
+      // (image 패키지 내부 디코더). 한 장이 배치/스캔 전체를 죽이지 않게 흡수.
+      final raw = img.decodeImage(bytes);
+      if (raw == null) return null;
+      final decoded = img.bakeOrientation(raw);
+      final dhash = _dhashOf(decoded);
+      final blocks = img.copyResize(decoded,
+          width: 4, height: 4, interpolation: img.Interpolation.linear);
+      final color = Uint8List(48);
+      var k = 0;
+      for (var y = 0; y < 4; y++) {
+        for (var x = 0; x < 4; x++) {
+          final p = blocks.getPixel(x, y);
+          color[k++] = p.r.toInt();
+          color[k++] = p.g.toInt();
+          color[k++] = p.b.toInt();
+        }
       }
+      return PhotoSignature(dhash, color);
+    } catch (_) {
+      return null;
     }
-    return PhotoSignature(dhash, color);
   }
 
   /// 9x8 그레이스케일로 줄여 가로 인접 픽셀의 밝기 증감을 비트로.
@@ -74,12 +80,17 @@ class ImageHash {
   }
 
   /// 두 해시의 다른 비트 수(0=동일, 64=정반대).
+  ///
+  /// dHash는 `1 << bit`로 bit 63까지 세팅하므로 최상위 비트가 켜지면 Dart의
+  /// 64비트 int는 **음수**가 된다. 이때 부호있는 `>>`(산술 시프트)는 부호 비트를
+  /// 계속 채워 x가 0이 되지 않아 **무한 루프**(→ UI 멈춤/ANR)가 난다.
+  /// 반드시 **부호없는 논리 시프트 `>>>`**로 0을 채워 종료를 보장한다.
   static int hammingDistance(int a, int b) {
     var x = a ^ b;
     var count = 0;
     while (x != 0) {
       count += x & 1;
-      x >>= 1;
+      x >>>= 1;
     }
     return count;
   }
@@ -128,6 +139,25 @@ class ImageHash {
     } catch (_) {
       return null;
     }
+  }
+
+  /// 썸네일 묶음의 시그니처를 **dart:ui 네이티브 디코더**로 동시에 계산한다.
+  ///
+  /// 비슷사진 스캔의 hot path. 핵심은 [signatureFromBytes]가 `dart:ui`의
+  /// `instantiateImageCodec`를 쓴다는 것 — 디코딩이 **엔진 워커 스레드**에서
+  /// 일어나 Dart 메인 isolate를 막지 않는다. 따라서 한 장이 느리거나 손상돼도
+  /// UI/타임아웃/'중지'가 항상 살아 있어 ANR(앱 멈춤)이 없다.
+  ///
+  /// (순수 Dart `image` 패키지 디코딩은 동기라 메인에서 hang을 일으키고,
+  /// `Isolate.run`으로 빼면 반복 spawn 비용이 메인을 막아 오히려 ANR이 났다.
+  /// dart:ui 네이티브가 이 둘을 모두 피하는 정답이다.)
+  ///
+  /// 반환 리스트 길이는 입력과 같고, 디코딩 실패/null 입력은 null.
+  static Future<List<PhotoSignature?>> signaturesFromThumbs(
+      List<Uint8List?> thumbs) {
+    return Future.wait(thumbs.map((t) => t == null
+        ? Future<PhotoSignature?>.value(null)
+        : signatureFromBytes(t)));
   }
 
   /// 32x32 RGBA → dHash(9x8) + 컬러(4x4). 순수 산술이라 매우 빠르다.
