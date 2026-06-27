@@ -361,17 +361,30 @@ class SimilarPhotoFinder {
       await tmp.writeAsBytes(bytes, flush: true);
       final input = InputImage.fromFilePath(tmp.path);
 
-      // 이미지 픽셀 크기(헤더만 읽어 정규화용 — 전체 디코딩 안 함).
+      // 이미지 픽셀 크기(정규화용) + 평균 채도(흑백 거르기)를 한 번에 구한다.
       double w = 0, h = 0;
+      double sat = 1.0; // 측정 실패 시 컬러로 간주(거르지 않음).
       try {
         final buf = await ui.ImmutableBuffer.fromUint8List(bytes);
         final desc = await ui.ImageDescriptor.encoded(buf);
         w = desc.width.toDouble();
         h = desc.height.toDouble();
+        // 24x24로 작게 디코딩해 평균 채도 측정.
+        final codec =
+            await desc.instantiateCodec(targetWidth: 24, targetHeight: 24);
+        final frame = await codec.getNextFrame();
+        final bd =
+            await frame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+        frame.image.dispose();
+        codec.dispose();
         desc.dispose();
         buf.dispose();
+        if (bd != null) sat = _meanSaturation(bd.buffer.asUint8List());
       } catch (_) {}
       if (w <= 0 || h <= 0) return null;
+      // 흑백/저채도 = 만화·웹툰(흑백)·문서·텍스트 캡처일 가능성 → 가족사진 아님.
+      // ML Kit 얼굴검출이 만화 속 그려진 얼굴까지 잡아 오매칭하던 문제를 막는다.
+      if (sat < 0.08) return null;
 
       // 얼굴(사람 수·배치) — 타임아웃으로 멈춤 방지.
       final faces = await faceDet
@@ -403,6 +416,21 @@ class SimilarPhotoFinder {
         await tmp?.delete();
       } catch (_) {}
     }
+  }
+
+  /// RGBA 픽셀의 평균 채도(0~1). 0에 가까우면 흑백(만화·문서·텍스트 캡처).
+  double _meanSaturation(Uint8List px) {
+    if (px.length < 4) return 1.0;
+    var sum = 0.0;
+    var n = 0;
+    for (var i = 0; i + 2 < px.length; i += 4) {
+      final r = px[i], g = px[i + 1], b = px[i + 2];
+      final mx = math.max(r, math.max(g, b));
+      final mn = math.min(r, math.min(g, b));
+      if (mx > 0) sum += (mx - mn) / mx;
+      n++;
+    }
+    return n == 0 ? 1.0 : sum / n;
   }
 
   /// InputImage → 대표 인물의 뼈 방향 단위벡터 맵(뼈이름 → [ux, uy]).
