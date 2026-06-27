@@ -447,10 +447,7 @@ class _SimilarPhotosScreenState extends ConsumerState<SimilarPhotosScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              Text(
-                  _progress < 0.45
-                      ? '${_comma(_scanned)} / ${_comma(_planned)}장 확인 중'
-                      : '자세(포즈)를 분석하는 중',
+              Text('${_comma(_scanned)} / ${_comma(_planned)}장에서 자세 비교 중',
                   style: TextStyle(
                       color: scheme.onSurface, fontWeight: FontWeight.w600)),
               const SizedBox(height: 2),

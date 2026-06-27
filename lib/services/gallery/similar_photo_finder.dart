@@ -9,8 +9,6 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 
-import '../../core/utils/image_hash.dart';
-
 /// 사진 접근 권한 상태(전체/일부/거부).
 enum GalleryAccess { full, limited, denied }
 
@@ -42,11 +40,12 @@ class GallerySurvey {
 
   bool get hasPhotos => total > 0;
 
-  /// '전체 검색'이 훑을 장수(상한 적용).
-  int get fullCount => math.min(total, 6000);
+  /// '전체 검색'이 훑을 장수(상한 적용). 포즈검출은 장당 ~0.1초라 무한정 못 본다 →
+  /// 시간대별로 펼쳐 최대 1,500장까지(약 2분). 그 이상은 사용자가 다시 돌리면 된다.
+  int get fullCount => math.min(total, 1500);
 
-  /// 포즈 재랭킹 등 고정 오버헤드(초). 표본 외 일정 비용.
-  static const double _fixedSec = 12;
+  /// 기준 포즈 검출 등 고정 오버헤드(초).
+  static const double _fixedSec = 3;
 
   Duration estimate(int count) {
     final sec = _fixedSec + (msPerPhoto * count) / 1000.0;
@@ -55,13 +54,6 @@ class GallerySurvey {
 
   Duration get quickEstimate => estimate(quickCount);
   Duration get fullEstimate => estimate(fullCount);
-}
-
-/// 후보 1건의 시각 점수(1단계 recall 결과).
-class _Scored {
-  _Scored(this.asset, this.visual);
-  final AssetEntity asset;
-  final double visual;
 }
 
 /// 비교할 "뼈"(연결된 두 관절). 위치·크기에 무관하게 **방향(각도)** 만 본다.
@@ -82,15 +74,21 @@ const _bones = <List<PoseLandmarkType>>[
 
 /// 갤러리를 뒤져 기준 사진과 **비슷한 자세(포즈)** 로 찍힌 사진을 찾는다.
 ///
-/// 이 앱은 "같은 포즈로 주기적으로 찍는" 가족사진 앱이다. 그래서 핵심 신호는
-/// 인물 동일성이 아니라 **자세** — Google ML Kit **포즈 추정**으로 관절 키포인트를
-/// 뽑아, 연결된 관절의 **방향 벡터(뼈 각도)** 로 정규화해 비교한다. 위치·크기·
-/// 화면 내 인물 크기에 무관하게 "자세가 얼마나 닮았는지"만 본다.
+/// 이 앱은 "같은 포즈로 주기적으로 찍는" 가족사진 앱이다. 핵심 신호는 인물 동일성이
+/// 아니라 **자세**다. Google ML Kit **포즈 추정**(무료·온디바이스)으로 관절 키포인트를
+/// 뽑아, 연결된 관절의 **방향 벡터(뼈 각도)** 로 정규화해 비교한다 — 위치·크기에
+/// 무관하게 "자세가 얼마나 닮았는지"만 본다.
 ///
-///  - 기준 사진에서 **포즈가 잡히면**: 후보에 포즈 검출을 돌려 자세 유사도(60%) +
-///    시각 유사도(40%)로 재랭킹. 포즈를 못 잡은 후보는 탈락이 아니라 데모트해
-///    "거의 똑같은 사진"이 항상 노출되게 한다.
-///  - 포즈가 없으면: 시각 시그니처(dHash 구조 + 컬러 블록)로만 정렬.
+/// 설계(포즈 우선):
+///  1. 기준 사진의 포즈를 먼저 검출. 사람/자세가 없으면 검색 불가(→ 빈 결과).
+///  2. 시간대별로 펼친 후보 각각에 **실제로 포즈검출**을 돌린다(색·밝기 해시로
+///     후보를 고르지 않는다 — 그건 자세와 무관해 엉뚱한 사진을 불러왔다).
+///  3. **사람/자세가 없는 사진(컴퓨터·풍경·물건)은 결과에서 완전히 제외.**
+///  4. **팔(어깨→팔꿈치→손목) 뼈에 가중치**를 줘 "브이·팔 든 자세"가 위로 오게,
+///     자세 유사도만으로 정렬.
+///
+/// 한계: 포즈검출은 장당 ~0.1초라 수만 장을 한 번에 못 본다 → 시간대별 분산 표본
+/// 수백~1,500장을 검사한다. 검사한 것 중에선 정확히 자세가 비슷한 것만 나온다.
 class SimilarPhotoFinder {
   const SimilarPhotoFinder();
 
@@ -128,30 +126,34 @@ class SimilarPhotoFinder {
     final sample = await _collectSpread(all, total, math.min(total, 32));
     final ms = await _probeMsPerPhoto(sample);
     return GallerySurvey(
-        total: total, msPerPhoto: ms, quickCount: math.min(total, 1500));
+        total: total, msPerPhoto: ms, quickCount: math.min(total, 500));
   }
 
-  /// 표본을 recall과 동일하게 16장씩 동시 처리해 장당 ms를 실측. 표본 없으면 폴백.
+  /// 장당 처리시간(ms)을 **실제 검색과 동일한 경로**(512px 썸네일 + ML Kit 포즈검출)로
+  /// 표본 몇 장에 대해 실측한다. 포즈검출이 병목(장당 ~0.1초)이므로 이걸 재야 예측이
+  /// 맞는다. 표본 없으면 보수적 폴백.
   Future<double> _probeMsPerPhoto(List<AssetEntity> sample) async {
-    if (sample.isEmpty) return 30;
-    final sw = Stopwatch()..start();
-    var n = 0;
-    const batch = 16;
-    for (var start = 0; start < sample.length; start += batch) {
-      final end = math.min(start + batch, sample.length);
-      final sub = sample.sublist(start, end);
-      // 실제 recall과 동일 경로: 썸네일 동시 가져오기 + dart:ui 네이티브 디코딩.
-      final thumbs = await Future.wait(sub.map((a) => _safeThumb(a, 100)));
-      await ImageHash.signaturesFromThumbs(thumbs)
-          .timeout(const Duration(seconds: 8),
-              onTimeout: () => <PhotoSignature?>[])
-          .catchError((_) => <PhotoSignature?>[]);
-      n += sub.length;
+    if (sample.isEmpty) return 100;
+    final detector = PoseDetector(
+        options: PoseDetectorOptions(mode: PoseDetectionMode.single));
+    final tmpDir = await getTemporaryDirectory();
+    try {
+      final probe = sample.take(8).toList(); // 포즈는 느리니 8장만 표본.
+      final sw = Stopwatch()..start();
+      var n = 0;
+      for (final a in probe) {
+        final b = await _safeThumb(a, 512);
+        if (b == null) continue;
+        await _detectPose(detector, b, tmpDir);
+        n++;
+      }
+      sw.stop();
+      if (n == 0) return 100;
+      // 실측에 여유(15%)를 더해 과소예측 방지(콜드 캐시 등).
+      return (sw.elapsedMilliseconds / n) * 1.15;
+    } finally {
+      await detector.close().timeout(const Duration(seconds: 5), onTimeout: () {});
     }
-    sw.stop();
-    if (n == 0) return 30;
-    // 실측에 여유(20%)를 더해 과소예측 방지(콜드 캐시 등).
-    return (sw.elapsedMilliseconds / n) * 1.2;
   }
 
   /// [want]장을 전 기간([total])에 **균등 분산**해 가져온다. 최신 N장만 보면 과거
@@ -194,28 +196,26 @@ class SimilarPhotoFinder {
     return out;
   }
 
-  /// 기준 사진 바이트 [refBytes]와 비슷한 자세의 사진을 유사도 높은 순으로.
+  /// 기준 사진 바이트 [refBytes]와 **비슷한 자세**의 사진을 유사도 높은 순으로.
   ///
-  /// [onProgress]는 0~1. 포즈 모드일 땐 0~0.45 recall + 0.45~1 포즈 분석.
+  /// 포즈 우선: 스캔하는 모든 후보에 ML Kit 포즈검출을 직접 돌리고, 사람/자세가 없는
+  /// 사진은 제외한다. [onProgress]는 0~1(스캔 진행도). 결과는 자세 유사도순.
   Future<List<SimilarMatch>> findSimilar(
     Uint8List refBytes, {
-    // 실유저는 사진이 수만 장. getAssetListRange(0, N)로 **최근 N장만** 가져와
-    // 총 장수와 무관하게 시간·메모리를 N에 묶는다(전체를 훑지 않음). 1단계 recall은
-    // 가벼우니 폭넓게 보고(연도별 타임랩스는 과거 사진까지 닿아야 하므로), 무거운
-    // 포즈 ML은 상위 후보 소수만 돌린다.
-    int scanLimit = 1500,
-    int posePool = 30,
+    // 포즈검출은 장당 ~0.1초라 수만 장을 못 본다. 시간대별로 펼친 [scanLimit]장만
+    // 검사한다(전 기간 분산 → 연도별 타임랩스에 과거 사진도 닿게).
+    int scanLimit = 500,
     int topN = 60,
-    double minVisual = 0.5, // 포즈 없을 때 시각 하한
+    // 이 미만 자세 유사도는 "다른 자세"로 보고 제외. 팔 자세 가중 후 기준.
+    double poseFloor = 0.6,
     // 안전 상한(무한 멈춤 방지). 평소엔 isCancelled/scanLimit가 먼저 끝낸다.
     Duration budget = const Duration(minutes: 20),
-    // 사용자가 '중지'를 누르면 true → 다음 단계에서 즉시 멈추고 최선결과 반환.
+    // 사용자가 '중지'를 누르면 true → 즉시 멈추고 최선결과 반환.
     bool Function()? isCancelled,
     void Function(double progress)? onProgress,
-    // 스캔한 장수/계획 장수 — "1,200 / 1,500장 · 약 30초 남음" 표시용.
+    // 스캔한 장수/계획 장수 — "120 / 500장 · 약 30초 남음" 표시용.
     void Function(int scanned, int planned)? onScanned,
-    // 1단계 결과가 나오는 즉시 화면에 흘려보낸다(점진 표시) → 전 과정이 끝날 때까지
-    // 빈 스피너로 기다리지 않게. 구글포토식 "결과 먼저, 정렬은 계속 정교화".
+    // 매칭이 나오는 즉시 화면에 흘려보낸다(점진 표시) → 빈 스피너로 안 기다리게.
     void Function(List<SimilarMatch> partial)? onPartial,
   }) async {
     final clock = Stopwatch()..start();
@@ -228,6 +228,11 @@ class SimilarPhotoFinder {
       onProgress?.call(0.01); // 즉시 움직임(0%에 갇힌 것처럼 안 보이게).
       final tmpDir = await getTemporaryDirectory();
 
+      // ── 기준 포즈 먼저 ── 사람/자세가 없으면 비교 기준이 없어 검색 불가.
+      // (색·밝기 매칭은 하지 않는다 — 자세와 무관해 엉뚱한 사진을 불러왔다.)
+      final refPose = await _detectPose(detector, refBytes, tmpDir);
+      if (refPose == null || refPose.length < 3) return const [];
+
       // 갤러리 앨범 목록 — 네이티브 호출이라 타임아웃으로 감싼다.
       final paths = await PhotoManager.getAssetPathList(
         type: RequestType.image,
@@ -237,8 +242,7 @@ class SimilarPhotoFinder {
       if (paths.isEmpty) return const [];
       final all = paths.first;
 
-      // ★ 총 장수·범위 조회도 만장 갤러리에선 느릴 수 있어 타임아웃 필수.
-      //   (여기 멈춤이 "사진이 너무 많아서" 프리징되던 가장 유력한 지점이었다.)
+      // 총 장수·범위 조회도 만장 갤러리에선 느릴 수 있어 타임아웃 필수.
       final total = await all.assetCountAsync
           .timeout(const Duration(seconds: 8), onTimeout: () => 0);
       if (total == 0) return const [];
@@ -246,99 +250,35 @@ class SimilarPhotoFinder {
       final assets = await _collectSpread(all, total, math.min(total, scanLimit));
       if (assets.isEmpty) return const [];
 
-      // ── 1단계 recall ──
-      // 디코딩은 **dart:ui 네이티브**(엔진 워커 스레드)에서 — 메인 UI 비차단.
-      // 느리거나 손상된 한 장이 있어도 메인은 자유라 아래 타임아웃이 정상 작동해
-      // 막힌 배치만 건너뛰고 '중지'·진행이 항상 살아있다(ANR 없음).
-      final refSig =
-          (await ImageHash.signaturesFromThumbs(<Uint8List?>[refBytes])
-                  .timeout(const Duration(seconds: 8),
-                      onTimeout: () => <PhotoSignature?>[null])
-                  .catchError((_) => <PhotoSignature?>[null]))
-              .first;
-      if (refSig == null) return const []; // 기준 사진 디코딩 실패.
-
-      final scored = <_Scored>[];
-      const batch = 16;
-      for (var start = 0; start < assets.length; start += batch) {
-        if (stop()) break; // 중지/예산초과 시 지금까지로 마무리.
-        final end = math.min(start + batch, assets.length);
-        final sub = assets.sublist(start, end);
-        // 썸네일 가져오기는 플랫폼 채널 — 16장 동시에(빠름).
-        final thumbs = await Future.wait(sub.map((a) => _safeThumb(a, 100)));
-        // 디코딩은 dart:ui 네이티브. 막힌 배치는 타임아웃으로 통째 건너뜀(메인은 자유).
-        final sigs = await ImageHash.signaturesFromThumbs(thumbs)
-            .timeout(const Duration(seconds: 8),
-                onTimeout: () =>
-                    List<PhotoSignature?>.filled(thumbs.length, null))
-            .catchError((_) =>
-                List<PhotoSignature?>.filled(thumbs.length, null));
-        for (var k = 0; k < sub.length; k++) {
-          final s = sigs[k];
-          if (s != null) {
-            scored.add(
-                _Scored(sub[k], ImageHash.signatureSimilarity(refSig, s)));
-          }
-        }
-        onProgress?.call(0.01 + 0.44 * end / assets.length);
-        onScanned?.call(end, assets.length);
-        await Future<void>.delayed(Duration.zero);
-      }
-      if (scored.isEmpty) return const [];
-      scored.sort((a, b) => b.visual.compareTo(a.visual));
-
-      // 1단계 결과를 **즉시** 화면에 흘려보낸다 — 사용자는 바로 사진을 본다.
-      List<SimilarMatch> recallView() => scored
-          .where((s) => s.visual >= minVisual)
-          .take(topN)
-          .map((s) => SimilarMatch(s.asset, s.visual))
-          .toList();
-      onPartial?.call(recallView());
-
-      // ── 기준 포즈 검출 ──
-      final refPose =
-          stop() ? null : await _detectPose(detector, refBytes, tmpDir);
-      final poseMode = refPose != null && refPose.length >= 3;
-
-      // 포즈가 없는 기준(또는 예산 초과): 시각 유사도로만.
-      if (!poseMode) {
-        onProgress?.call(1);
-        return recallView();
-      }
-
-      // ── 2단계: 상위 후보만 포즈 재랭킹(0.45→1). 예산 초과 시 중단하고,
-      //    포즈를 못 돌린 후보는 recall 점수로 살려 결과 누락 0. ──
-      final pool = scored.take(posePool).toList();
+      // ── 후보마다 실제 포즈검출 → 자세 유사도 ──
+      // 썸네일은 6장씩 동시에 받아두고(플랫폼 채널), 포즈검출은 순차로(한 인스턴스).
+      // 사람/자세가 없는 사진은 추가하지 않는다 → 컴퓨터·풍경·물건 사진 자동 제외.
       final matches = <SimilarMatch>[];
-      final processed = <String>{};
-      for (var i = 0; i < pool.length; i++) {
+      const fetch = 6;
+      for (var start = 0; start < assets.length; start += fetch) {
         if (stop()) break;
-        final v = pool[i].visual;
-        double score;
-        final bytes = await _safeThumb(pool[i].asset, 512);
-        final cand =
-            bytes == null ? null : await _detectPose(detector, bytes, tmpDir);
-        if (cand != null && cand.length >= 3) {
-          final poseSim = _poseSimilarity(refPose, cand);
-          score = (0.55 * poseSim + 0.45 * v).clamp(0.0, 1.0);
-        } else {
-          score = 0.6 * v;
+        final end = math.min(start + fetch, assets.length);
+        final sub = assets.sublist(start, end);
+        final thumbs = await Future.wait(sub.map((a) => _safeThumb(a, 512)));
+        for (var k = 0; k < sub.length; k++) {
+          if (stop()) break;
+          final b = thumbs[k];
+          if (b == null) continue;
+          final pose = await _detectPose(detector, b, tmpDir);
+          if (pose == null || pose.length < 3) continue; // 사람/자세 없음 → 제외.
+          final sim = _poseSimilarity(refPose, pose);
+          if (sim >= poseFloor) matches.add(SimilarMatch(sub[k], sim));
         }
-        matches.add(SimilarMatch(pool[i].asset, score));
-        processed.add(pool[i].asset.id);
-        onProgress?.call(0.45 + 0.55 * (i + 1) / pool.length);
+        onProgress?.call(0.01 + 0.98 * end / assets.length);
+        onScanned?.call(end, assets.length);
+        // 지금까지의 best를 점진 표시.
+        matches.sort((a, b) => b.similarity.compareTo(a.similarity));
+        onPartial?.call(
+            matches.length > topN ? matches.sublist(0, topN) : List.of(matches));
         await Future<void>.delayed(Duration.zero);
       }
 
-      // 포즈를 못 돌린(예산 초과/풀 밖) 후보도 recall 점수로 합류 — 누락 방지.
-      for (final s in scored) {
-        if (processed.contains(s.asset.id) || s.visual < minVisual) continue;
-        matches.add(SimilarMatch(s.asset, 0.6 * s.visual));
-      }
-
-      matches
-        ..removeWhere((m) => m.similarity < 0.35)
-        ..sort((a, b) => b.similarity.compareTo(a.similarity));
+      matches.sort((a, b) => b.similarity.compareTo(a.similarity));
       onProgress?.call(1);
       final result = matches.length > topN ? matches.sublist(0, topN) : matches;
       onPartial?.call(result);
@@ -415,23 +355,38 @@ class SimilarPhotoFinder {
     }
   }
 
-  /// 두 자세의 유사도(0~1) — 공통 뼈들의 방향 코사인 평균. 공통 뼈가 3개 미만이면 0.
+  /// 두 자세의 유사도(0~1) — 공통 뼈들의 방향 코사인 **가중 평균**. 공통 뼈 3개 미만 0.
+  ///
+  /// **팔 뼈(어깨→팔꿈치, 팔꿈치→손목)에 큰 가중치**를 준다. 서 있는 사람은 몸통·다리
+  /// 뼈가 다 비슷해서, 동일 가중이면 "그냥 선 사진"과 "브이 한 사진"이 똑같이 높게 나온다.
+  /// 팔을 강조해야 "브이·팔 든 자세"가 "팔 내린 자세"보다 위로 온다(사용자 의도).
   double _poseSimilarity(
       Map<String, List<double>> a, Map<String, List<double>> b) {
     var sum = 0.0;
+    var wsum = 0.0;
     var n = 0;
     for (final key in a.keys) {
       final vb = b[key];
       if (vb == null) continue;
       final va = a[key]!;
+      final w = _armBones.contains(key) ? 3.0 : 1.0;
       final cos = (va[0] * vb[0] + va[1] * vb[1]).clamp(-1.0, 1.0);
-      sum += (cos + 1) / 2; // [-1,1] → [0,1]
+      sum += w * (cos + 1) / 2; // [-1,1] → [0,1]
+      wsum += w;
       n++;
     }
-    if (n < 3) return 0;
-    return (sum / n).clamp(0.0, 1.0);
+    if (n < 3 || wsum == 0) return 0;
+    return (sum / wsum).clamp(0.0, 1.0);
   }
 }
+
+/// 팔 뼈 키(_detectPose의 '${a.name}_${b.name}' 형식) — 자세 비교에서 가중된다.
+const _armBones = <String>{
+  'leftShoulder_leftElbow',
+  'leftElbow_leftWrist',
+  'rightShoulder_rightElbow',
+  'rightElbow_rightWrist',
+};
 
 final similarPhotoFinderProvider =
     Provider<SimilarPhotoFinder>((ref) => const SimilarPhotoFinder());

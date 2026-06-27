@@ -6,8 +6,8 @@ void main() {
   group('GallerySurvey 예측', () {
     test('estimate = 고정오버헤드 + 장당시간 × 장수', () {
       const s = GallerySurvey(total: 1000, msPerPhoto: 20, quickCount: 1000);
-      // 12초(고정) + 20ms × 1000장 = 12 + 20 = 32초
-      expect(s.estimate(1000).inSeconds, 32);
+      // 3초(고정) + 20ms × 1000장 = 3 + 20 = 23초
+      expect(s.estimate(1000).inSeconds, 23);
     });
 
     test('장당 시간이 빠르면 예상 시간도 짧다', () {
@@ -17,19 +17,19 @@ void main() {
     });
 
     test('전체 검색은 빠른 검색보다 오래 걸린다(더 많은 장수)', () {
-      const s = GallerySurvey(total: 6000, msPerPhoto: 15, quickCount: 1500);
+      const s = GallerySurvey(total: 6000, msPerPhoto: 15, quickCount: 500);
       expect(s.fullCount, greaterThan(s.quickCount));
       expect(s.fullEstimate > s.quickEstimate, isTrue);
     });
 
-    test('fullCount는 6000장으로 상한(만장 갤러리도 폭주 안 함)', () {
-      const s = GallerySurvey(total: 33204, msPerPhoto: 15, quickCount: 1500);
-      expect(s.fullCount, 6000);
+    test('fullCount는 1500장으로 상한(포즈검출 비용 때문에 무한정 못 봄)', () {
+      const s = GallerySurvey(total: 33204, msPerPhoto: 90, quickCount: 500);
+      expect(s.fullCount, 1500);
     });
 
     test('quickCount는 호출부가 정한 값을 그대로 반영', () {
-      const s = GallerySurvey(total: 33204, msPerPhoto: 15, quickCount: 1500);
-      expect(s.quickCount, 1500);
+      const s = GallerySurvey(total: 33204, msPerPhoto: 90, quickCount: 500);
+      expect(s.quickCount, 500);
     });
 
     test('hasPhotos: 0장이면 false', () {
