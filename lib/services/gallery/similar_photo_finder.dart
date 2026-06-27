@@ -228,7 +228,7 @@ class SimilarPhotoFinder {
     int scanLimit = 500,
     int topN = 60,
     // 이 미만 구도 유사도는 "다른 구도"로 보고 제외.
-    double compFloor = 0.6,
+    double compFloor = 0.65,
     // 안전 상한(무한 멈춤 방지). 평소엔 isCancelled/scanLimit가 먼저 끝낸다.
     Duration budget = const Duration(minutes: 20),
     // 사용자가 '중지'를 누르면 true → 즉시 멈추고 최선결과 반환.
@@ -433,16 +433,20 @@ class SimilarPhotoFinder {
     }
   }
 
-  /// 두 사진의 **사람 구도 유사도**(0~1): 사람 수(45%) + 배치(30%) + 자세(25%).
-  /// 사람 수가 2명 이상 차이나면 다른 구도로 보고 0.
+  /// 두 사진의 **사람 구도 유사도**(0~1).
+  ///
+  /// 사람 수가 먼저 맞아야 한다(다른 인원수 = 다른 구도). 같은 인원수 안에서:
+  ///  - **여러 명**이면 화면 내 **배치**(나란히/모여)가 핵심 → 배치 비중을 크게.
+  ///  - **혼자**면 배치가 무의미(퍼짐 0)하므로 **자세**(브이/팔/앉음)가 핵심 → 자세 위주.
+  /// 인원수가 1명 차이면 절반 감점, 2명 이상이면 0(완전히 다른 구도).
   double _compositionSimilarity(_Composition r, _Composition c) {
     final dc = (r.count - c.count).abs();
-    final countScore = dc == 0
+    final countFactor = dc == 0
         ? 1.0
         : dc == 1
-            ? 0.4
+            ? 0.5
             : 0.0;
-    if (countScore == 0) return 0;
+    if (countFactor == 0) return 0;
     // 배치: 가로/세로 퍼짐 + 평균 얼굴 크기 패턴이 비슷할수록 1.
     final arr = (1.0 -
             ((r.xSpread - c.xSpread).abs() +
@@ -454,8 +458,10 @@ class SimilarPhotoFinder {
     final poseScore = (r.pose.length >= 3 && c.pose.length >= 3)
         ? _poseSimilarity(r.pose, c.pose)
         : 0.5;
-    return (0.45 * countScore + 0.30 * arr + 0.25 * poseScore)
-        .clamp(0.0, 1.0);
+    final within = r.count <= 1
+        ? 0.25 * arr + 0.75 * poseScore // 혼자 → 자세 위주
+        : 0.55 * arr + 0.45 * poseScore; // 여러 명 → 배치 위주
+    return (countFactor * within).clamp(0.0, 1.0);
   }
 
   /// 두 자세의 유사도(0~1) — 공통 뼈들의 방향 코사인 **가중 평균**. 공통 뼈 3개 미만 0.
