@@ -3,15 +3,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:photo_manager/photo_manager.dart';
-
-import 'similar_photos_screen.dart';
 
 import '../../core/utils/backfill_dates.dart';
 import '../../core/utils/schedule_period.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repositories/providers.dart';
-import '../../services/gallery/similar_photo_finder.dart';
 import '../../services/providers.dart';
 
 /// 과거 일괄 채우기 — ②-1 입력경로 3 ("backfill").
@@ -173,86 +169,41 @@ class _BackfillScreenState extends ConsumerState<BackfillScreen> {
     );
   }
 
-  /// 진입 화면 — 두 가지 채우기 방식을 동등하게 제시(자동 갤러리 띄우기 없음).
+  /// 진입 화면 — 갤러리에서 여러 장 직접 골라 한 번에 채운다.
   Widget _empty() {
     final scheme = Theme.of(context).colorScheme;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-      children: [
-        Text('예전 가족 사진으로\n지난 기간을 채워보세요',
-            style: Theme.of(context)
-                .textTheme
-                .headlineSmall
-                ?.copyWith(fontWeight: FontWeight.w800, height: 1.25)),
-        const SizedBox(height: 6),
-        Text('어떻게 채울지 골라주세요.',
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: scheme.onSurfaceVariant)),
-        const SizedBox(height: 24),
-        // 추천: 한 장 고르면 같은 자세(포즈) 사진을 자동으로 모아준다.
-        _ChooserCard(
-          icon: Icons.image_search,
-          title: '비슷한 포즈 찾기',
-          subtitle: '기준 사진 한 장만 고르면, 갤러리에서 비슷한 자세로 찍힌 사진을 자동으로 모아드려요.',
-          badge: '추천',
-          highlight: true,
-          onTap: _findSimilar,
-        ),
-        const SizedBox(height: 14),
-        _ChooserCard(
-          icon: Icons.photo_library_outlined,
-          title: '직접 여러 장 고르기',
-          subtitle: '갤러리에서 원하는 사진을 직접 선택해 한 번에 채워요.',
-          onTap: _pick,
-        ),
-      ],
-    );
-  }
-
-  /// 기준 사진 한 장을 고르면, 갤러리에서 비슷한 자세(포즈) 사진을 찾아 보여준다.
-  ///
-  /// 흐름: ① 사진 접근 권한을 **먼저** 한 번 요청 → ② 거부만 아니면(전체/일부 모두)
-  /// 바로 기준 사진 선택으로 진행. '일부만 허용'이어도 막지 않고 결과 화면에서
-  /// 배너로 안내(막으면 허용해도 계속 반복되는 문제 방지).
-  ///
-  /// maxWidth/imageQuality 지정 → image_picker가 원본을 **JPEG로 재인코딩**한다.
-  /// (갤럭시 기본 HEIC 등 Dart image 패키지가 못 푸는 포맷이어도 안전하게 디코딩)
-  Future<void> _findSimilar() async {
-    final access = await ref.read(similarPhotoFinderProvider).requestAccess();
-    if (!mounted) return;
-    if (access == GalleryAccess.denied) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('사진 접근을 허용해야 비슷한 사진을 찾을 수 있어요.'),
-          action:
-              SnackBarAction(label: '설정', onPressed: PhotoManager.openSetting),
-        ),
-      );
-      return;
-    }
-    // 전체/일부 허용 → 바로 기준 사진 선택 후 검색.
-    // 기준 사진은 **유사도 시그니처 계산용**(화면 표시 X)이라 작게 받는다.
-    // 대형 이미지를 순수 Dart로 디코딩하면 느려서(특히 저사양/에뮬레이터) 작게.
-    final refImg = await _picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 720,
-      imageQuality: 85,
-    );
-    if (refImg == null || !mounted) return;
-    final added = await Navigator.of(context).push<int>(
-      MaterialPageRoute(
-        builder: (_) => SimilarPhotosScreen(
-          project: widget.project,
-          referencePath: refImg.path,
-          limitedAccess: access == GalleryAccess.limited,
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.photo_library_outlined, size: 56, color: scheme.primary),
+            const SizedBox(height: 16),
+            Text('예전 가족 사진으로\n지난 기간을 채워보세요',
+                textAlign: TextAlign.center,
+                style: Theme.of(context)
+                    .textTheme
+                    .headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.w800, height: 1.25)),
+            const SizedBox(height: 10),
+            Text('갤러리에서 원하는 사진을 여러 장 골라 한 번에 채워요.\n'
+                '각 사진 날짜는 주기에 맞춰 과거로 자동 배치되고, 개별 수정할 수 있어요.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant, height: 1.4)),
+            const SizedBox(height: 28),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52)),
+              onPressed: _pick,
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+              label: const Text('갤러리에서 사진 고르기'),
+            ),
+          ],
         ),
       ),
     );
-    if (added != null && added > 0 && mounted) {
-      Navigator.of(context).pop(added); // 채우기 완료 → 닫기.
-    }
   }
 
   Widget _list() {
@@ -269,101 +220,6 @@ class _BackfillScreenState extends ConsumerState<BackfillScreen> {
         ),
         onEditDate: () => _editDate(_items[i]),
         onRemove: () => setState(() => _items.removeAt(i)),
-      ),
-    );
-  }
-}
-
-/// 채우기 방식 선택 카드 — 큰 탭 영역 + 아이콘/제목/설명(+ 추천 배지).
-class _ChooserCard extends StatelessWidget {
-  const _ChooserCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-    this.badge,
-    this.highlight = false,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-  final String? badge;
-  final bool highlight;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
-    return Material(
-      color: highlight ? scheme.primaryContainer : scheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: highlight
-                      ? scheme.primary
-                      : scheme.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(icon,
-                    size: 28,
-                    color: highlight ? scheme.onPrimary : scheme.primary),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(title,
-                              style: text.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w800)),
-                        ),
-                        if (badge != null) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: scheme.primary,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(badge!,
-                                style: text.labelSmall?.copyWith(
-                                    color: scheme.onPrimary,
-                                    fontWeight: FontWeight.w700)),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(subtitle,
-                        style: text.bodySmall?.copyWith(
-                            color: highlight
-                                ? scheme.onPrimaryContainer
-                                    .withValues(alpha: 0.8)
-                                : scheme.onSurfaceVariant,
-                            height: 1.35)),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 4),
-              Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
-            ],
-          ),
-        ),
       ),
     );
   }
