@@ -48,6 +48,8 @@ class _AlignmentAdjusterScreenState
   // 정렬은 '선택'이다. 기본은 바로 저장(확인 화면), 원하는 사람만 맞추기 모드로 진입.
   bool _aligning = false;
   Size _viewSize = Size.zero;
+  // 그날의 한마디(선택) — 촬영 직후 바로 남길 수 있게(나중에 상세에서도 편집 가능).
+  final _noteController = TextEditingController();
 
   // 제스처 시작 시점 스냅샷.
   Offset _startFocal = Offset.zero;
@@ -56,6 +58,12 @@ class _AlignmentAdjusterScreenState
   double _baseRotation = 0.0;
 
   bool get _hasReference => widget.referenceImagePath != null;
+
+  @override
+  void dispose() {
+    _noteController.dispose();
+    super.dispose();
+  }
 
   void _onScaleStart(ScaleStartDetails d) {
     _startFocal = d.focalPoint;
@@ -113,12 +121,14 @@ class _AlignmentAdjusterScreenState
       // (회상 알림으로 진입한 경우엔 이미 placeId가 주어짐.)
       final placeId = widget.placeId ?? await _resolvePlaceId();
 
+      final note = _noteController.text.trim();
       final capture = await captures.create(
         project: widget.project,
         filePath: stored.originalPath,
         thumbPath: stored.thumbPath,
         capturedAt: widget.capturedAt,
         alignmentMeta: meta.isIdentity ? null : meta.toMap(),
+        note: note.isEmpty ? null : note,
         placeId: placeId,
       );
 
@@ -248,6 +258,28 @@ class _AlignmentAdjusterScreenState
         style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.4),
       ),
       const SizedBox(height: 14),
+      // 그날의 한마디(선택) — 지금 한 줄 남기면 타임랩스 캡션으로도 쓰여요.
+      TextField(
+        controller: _noteController,
+        enabled: !_saving,
+        maxLength: 80,
+        style: const TextStyle(color: Colors.white),
+        cursorColor: Colors.white,
+        textInputAction: TextInputAction.done,
+        decoration: InputDecoration(
+          hintText: '그날의 한마디 (선택) · 예: 첫 걸음마 뗀 날',
+          hintStyle: const TextStyle(color: Colors.white38),
+          prefixIcon: const Icon(Icons.edit_note, color: Colors.white54),
+          counterStyle: const TextStyle(color: Colors.white38),
+          filled: true,
+          fillColor: Colors.white.withValues(alpha: 0.08),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+      const SizedBox(height: 6),
       SizedBox(
         width: double.infinity,
         child: FilledButton.icon(

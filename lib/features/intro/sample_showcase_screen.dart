@@ -8,6 +8,8 @@ import '../../data/db/app_database.dart';
 import '../../services/providers.dart';
 import '../../services/sample/sample_seeder.dart';
 import '../home/home_providers.dart';
+import '../home/project_shell.dart';
+import '../onboarding/new_project_screen.dart';
 
 /// 첫 실행 쇼케이스 — 샘플 5컷이 **폴라로이드 타임랩스**로 도는 화면.
 ///
@@ -17,6 +19,31 @@ class SampleShowcaseScreen extends ConsumerWidget {
   const SampleShowcaseScreen({super.key, required this.project});
 
   final Project project;
+
+  /// "내 기록 시작하기" — 쇼케이스가 이미 '시작' 동의를 받았으므로, 환영 화면을
+  /// 한 번 더 거치지 않고 곧바로 새 기록 만들기로 진입한다(첫 실행 1단계 단축, ⑥).
+  /// 예시 사진은 시작과 함께 깨끗이 제거한다.
+  ///
+  /// markShowcaseSeen()이 RootScreen을 재빌드해 이 위젯을 언마운트하므로,
+  /// 이후 context/ref 접근이 깨지지 않도록 navigator·notifier를 await 전에 잡아둔다.
+  Future<void> _start(BuildContext context, WidgetRef ref) async {
+    final navigator = Navigator.of(context);
+    final seeder = ref.read(sampleSeederProvider);
+    final settingsNotifier = ref.read(appSettingsProvider.notifier);
+    final selectedNotifier = ref.read(selectedProjectIdProvider.notifier);
+
+    final created = await navigator.push<Project>(
+      MaterialPageRoute(builder: (_) => const NewProjectScreen()),
+    );
+    // 취소하더라도 쇼케이스는 끝났으니 예시를 정리하고 '본 것'으로 표시.
+    await seeder.removeSample(project.id);
+    await settingsNotifier.markShowcaseSeen();
+    if (created == null) return;
+    selectedNotifier.select(created.id);
+    await navigator.push(
+      MaterialPageRoute(builder: (_) => ProjectShell(project: created)),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -60,13 +87,7 @@ class SampleShowcaseScreen extends ConsumerWidget {
               FilledButton(
                 style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(52)),
-                onPressed: () async {
-                  // 예시 사진은 내 데이터가 아니므로, 시작과 함께 깨끗이 제거.
-                  await ref
-                      .read(sampleSeederProvider)
-                      .removeSample(project.id);
-                  await ref.read(appSettingsProvider.notifier).markShowcaseSeen();
-                },
+                onPressed: () => _start(context, ref),
                 child: const Text('내 기록 시작하기'),
               ),
               const SizedBox(height: 10),

@@ -55,17 +55,32 @@ class _CollagePosterScreenState extends ConsumerState<CollagePosterScreen> {
               SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(52)),
-                    onPressed: _exporting ? null : _share,
-                    icon: _exporting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.ios_share),
-                    label: Text(_exporting ? '만드는 중…' : '포스터 이미지로 공유'),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(52)),
+                        onPressed: _exporting ? null : _share,
+                        icon: _exporting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.ios_share),
+                        label: Text(_exporting ? '만드는 중…' : '포스터 이미지로 공유'),
+                      ),
+                      const SizedBox(height: 8),
+                      // 공유와 별개로 내 사진첩에 바로 보관(⑦).
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48)),
+                        onPressed: _exporting ? null : _saveToGallery,
+                        icon: const Icon(Icons.download_rounded),
+                        label: const Text('기기에 저장'),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -83,13 +98,30 @@ class _CollagePosterScreenState extends ConsumerState<CollagePosterScreen> {
       final path = await share.captureBoundaryToPng(_posterKey, pixelRatio: 3);
       await share.shareFiles([path], text: '그날 우리 — ${widget.project.title} 성장 포스터');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('포스터 공유 실패: $e')));
-      }
+      _snack('포스터 공유 실패: $e');
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
+  }
+
+  /// 포스터를 기기 사진첩에 저장(⑦).
+  Future<void> _saveToGallery() async {
+    setState(() => _exporting = true);
+    try {
+      final share = ref.read(shareServiceProvider);
+      final path = await share.captureBoundaryToPng(_posterKey, pixelRatio: 3);
+      await share.saveToGallery(path);
+      _snack('포스터를 사진첩에 저장했어요.');
+    } catch (e) {
+      _snack('포스터 저장 실패: $e');
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 }
 

@@ -154,6 +154,13 @@ class _CompareViewState extends ConsumerState<CompareView> {
               : const Icon(Icons.ios_share),
           label: Text(_exporting ? '만드는 중…' : '타임랩스 공유하기'),
         ),
+        const SizedBox(height: 8),
+        // 공유(다른 앱)와 별개로, 사용자가 가장 기대하는 "내 사진첩에 저장"(⑦).
+        OutlinedButton.icon(
+          onPressed: _exporting ? null : () => _saveTimelapse(asc),
+          icon: const Icon(Icons.download_rounded),
+          label: const Text('기기에 저장'),
+        ),
         const SizedBox(height: 32),
         // ── 그때 vs 지금(공유 이미지).
         Text('그때 vs 지금',
@@ -180,6 +187,12 @@ class _CompareViewState extends ConsumerState<CompareView> {
             title: '비교 이미지 공유',
             subtitle: '그때 vs 지금을 한 장으로',
             onTap: _exporting ? null : _shareComparison,
+          ),
+          _MenuRow(
+            icon: Icons.download_rounded,
+            title: '비교 이미지 저장',
+            subtitle: '사진첩(갤러리)에 저장',
+            onTap: _exporting ? null : _saveComparison,
           ),
           _MenuRow(
             icon: Icons.swipe_outlined,
@@ -224,21 +237,36 @@ class _CompareViewState extends ConsumerState<CompareView> {
     }
   }
 
+  /// 비교 이미지를 기기 사진첩에 저장(⑦).
+  Future<void> _saveComparison() async {
+    setState(() => _exporting = true);
+    try {
+      final share = ref.read(shareServiceProvider);
+      final path = await share.captureBoundaryToPng(_compareKey);
+      await share.saveToGallery(path);
+      _showInfo('비교 이미지를 사진첩에 저장했어요.');
+    } catch (e) {
+      _showError('비교 이미지 저장에 실패했어요: $e');
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  List<TimelapseFrame> _frames(List<Capture> asc) => asc
+      .map((c) => TimelapseFrame(
+            imagePath: c.filePath,
+            align: c.alignmentMeta != null
+                ? AlignmentMeta.fromMap(c.alignmentMeta!)
+                : AlignmentMeta.identity,
+          ))
+      .toList(growable: false);
+
   Future<void> _shareTimelapse(List<Capture> asc) async {
     setState(() => _exporting = true);
     try {
       final timelapse = ref.read(timelapseServiceProvider);
       final share = ref.read(shareServiceProvider);
-      final frames = asc
-          .map((c) => TimelapseFrame(
-                imagePath: c.filePath,
-                align: c.alignmentMeta != null
-                    ? AlignmentMeta.fromMap(c.alignmentMeta!)
-                    : AlignmentMeta.identity,
-              ))
-          .toList(growable: false);
-
-      final gifPath = await timelapse.buildGif(frames);
+      final gifPath = await timelapse.buildGif(_frames(asc));
 
       // ── 생성 완료: 6-1장이 허용하는 유일한 전면 광고 지점(자연스러운 휴지점).
       //    실제 AdMob 전면 노출은 작업 #9에서 빈도 상한과 함께 연동.
@@ -250,6 +278,22 @@ class _CompareViewState extends ConsumerState<CompareView> {
       );
     } catch (e) {
       _showError('타임랩스 생성에 실패했어요: $e');
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  /// 타임랩스 GIF를 기기 사진첩에 저장(⑦).
+  Future<void> _saveTimelapse(List<Capture> asc) async {
+    setState(() => _exporting = true);
+    try {
+      final timelapse = ref.read(timelapseServiceProvider);
+      final share = ref.read(shareServiceProvider);
+      final gifPath = await timelapse.buildGif(_frames(asc));
+      await share.saveToGallery(gifPath);
+      _showInfo('타임랩스를 사진첩에 저장했어요.');
+    } catch (e) {
+      _showError('타임랩스 저장에 실패했어요: $e');
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
@@ -285,6 +329,12 @@ class _CompareViewState extends ConsumerState<CompareView> {
   }
 
   void _showError(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  void _showInfo(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(msg)));

@@ -7,14 +7,22 @@ import '../home/home_providers.dart';
 
 /// 아이디어8 — 성장 차트. 사진별 키(cm) 기록을 시간순 꺾은선으로 시각화.
 /// (값은 사진 상세에서 입력. 외부 차트 패키지 없이 CustomPainter로 그린다.)
-class GrowthChartScreen extends ConsumerWidget {
+class GrowthChartScreen extends ConsumerStatefulWidget {
   const GrowthChartScreen({super.key, required this.project});
 
   final Project project;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final capturesAsync = ref.watch(capturesProvider(project.id));
+  ConsumerState<GrowthChartScreen> createState() => _GrowthChartScreenState();
+}
+
+class _GrowthChartScreenState extends ConsumerState<GrowthChartScreen> {
+  final _chartKey = GlobalKey();
+  bool _exporting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final capturesAsync = ref.watch(capturesProvider(widget.project.id));
     final heights =
         ref.watch(appSettingsProvider).value?.captureHeights ?? const {};
 
@@ -33,39 +41,118 @@ class GrowthChartScreen extends ConsumerWidget {
           if (points.length < 2) {
             return _empty(context);
           }
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('${points.first.cm.toStringAsFixed(1)} → '
-                    '${points.last.cm.toStringAsFixed(1)} cm',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                        fontWeight: FontWeight.w800)),
-                Text('${points.length}회 기록 · '
-                    '+${(points.last.cm - points.first.cm).toStringAsFixed(1)} cm 자랐어요',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                const SizedBox(height: 20),
-                Expanded(
-                  child: CustomPaint(
-                    painter: _LineChartPainter(
-                      points: points,
-                      lineColor: Theme.of(context).colorScheme.primary,
-                      gridColor: Theme.of(context).colorScheme.outlineVariant,
-                      labelColor:
-                          Theme.of(context).colorScheme.onSurfaceVariant,
+          final scheme = Theme.of(context).colorScheme;
+          return Column(
+            children: [
+              Expanded(
+                child: RepaintBoundary(
+                  key: _chartKey,
+                  child: Container(
+                    color: scheme.surface,
+                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text('${points.first.cm.toStringAsFixed(1)} → '
+                            '${points.last.cm.toStringAsFixed(1)} cm',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                    color: scheme.primary,
+                                    fontWeight: FontWeight.w800)),
+                        Text('${points.length}회 기록 · '
+                            '+${(points.last.cm - points.first.cm).toStringAsFixed(1)} cm 자랐어요',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: scheme.onSurfaceVariant)),
+                        const SizedBox(height: 20),
+                        Expanded(
+                          child: CustomPaint(
+                            painter: _LineChartPainter(
+                              points: points,
+                              lineColor: scheme.primary,
+                              gridColor: scheme.outlineVariant,
+                              labelColor: scheme.onSurfaceVariant,
+                            ),
+                            child: const SizedBox.expand(),
+                          ),
+                        ),
+                      ],
                     ),
-                    child: const SizedBox.expand(),
                   ),
                 ),
-              ],
-            ),
+              ),
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: _exporting ? null : _share,
+                          icon: _exporting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white))
+                              : const Icon(Icons.ios_share),
+                          label: Text(_exporting ? '만드는 중…' : '공유'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _exporting ? null : _saveToGallery,
+                          icon: const Icon(Icons.download_rounded),
+                          label: const Text('기기에 저장'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           );
         },
       ),
     );
+  }
+
+  Future<void> _share() async {
+    setState(() => _exporting = true);
+    try {
+      final share = ref.read(shareServiceProvider);
+      final path = await share.captureBoundaryToPng(_chartKey, pixelRatio: 3);
+      await share.shareFiles([path],
+          text: '그날 우리 — ${widget.project.title} 성장 차트');
+    } catch (e) {
+      _snack('차트 공유 실패: $e');
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  /// 차트를 기기 사진첩에 저장(⑦).
+  Future<void> _saveToGallery() async {
+    setState(() => _exporting = true);
+    try {
+      final share = ref.read(shareServiceProvider);
+      final path = await share.captureBoundaryToPng(_chartKey, pixelRatio: 3);
+      await share.saveToGallery(path);
+      _snack('성장 차트를 사진첩에 저장했어요.');
+    } catch (e) {
+      _snack('차트 저장 실패: $e');
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   Widget _empty(BuildContext context) {

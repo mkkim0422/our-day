@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
+import 'package:gal/gal.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -65,5 +66,18 @@ class ShareService {
     );
     await File(outPath).writeAsBytes(bytes);
     return outPath;
+  }
+
+  /// 결과물(PNG/JPG/GIF)을 기기 사진첩(갤러리)에 저장한다.
+  ///
+  /// OS 공유 시트로 "다른 앱에 보내기"와 별개로, 사용자가 결과물을 **자기 사진첩에
+  /// 바로 보관**하고 싶을 때 사용(가장 기대되는 동작). 권한이 없으면 요청하고,
+  /// '그날 우리' 앨범에 모은다. GIF(타임랩스)도 putImage로 이미지로 저장된다.
+  Future<void> saveToGallery(String filePath) async {
+    if (!File(filePath).existsSync()) {
+      throw StateError('저장할 파일이 없습니다.');
+    }
+    if (!await Gal.hasAccess()) await Gal.requestAccess();
+    await Gal.putImage(filePath, album: '그날 우리');
   }
 }
