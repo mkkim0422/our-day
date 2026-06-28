@@ -6,7 +6,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
-import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -42,9 +41,9 @@ class GallerySurvey {
 
   bool get hasPhotos => total > 0;
 
-  /// '전체 검색'이 훑을 장수(상한 적용). 포즈검출은 장당 ~0.1초라 무한정 못 본다 →
-  /// 시간대별로 펼쳐 최대 1,500장까지(약 2분). 그 이상은 사용자가 다시 돌리면 된다.
-  int get fullCount => math.min(total, 1500);
+  /// '전체 검색'이 훑을 장수(상한 적용). 얼굴검출은 장당 ~0.05초라 무한정 못 본다 →
+  /// 시간대별로 펼쳐 최대 2,000장까지. 그 이상은 사용자가 다시 돌리면 된다.
+  int get fullCount => math.min(total, 2000);
 
   /// 기준 포즈 검출 등 고정 오버헤드(초).
   static const double _fixedSec = 3;
@@ -58,54 +57,35 @@ class GallerySurvey {
   Duration get fullEstimate => estimate(fullCount);
 }
 
-/// 사진 한 장의 **사람 구도** 서명. 배경·색은 보지 않는다.
-///  - [count] 프레임 안 사람 수(얼굴 개수).
-///  - [xSpread]/[ySpread] 얼굴들이 가로/세로로 퍼진 정도(0~1) — "나란히"(가로 넓음)
-///    vs "모여 앉음"(좁음) vs "혼자"(0)를 구분.
-///  - [avgSize] 평균 얼굴 크기(0~1) — 전신 단체샷(작음) vs 클로즈업(큼).
-///  - [pose] 대표 인물의 뼈 방향(서있음/앉음/브이 구분용, 없으면 빈 맵).
+/// 사진 한 장의 **사람 구도** 서명. 배경·색·자세는 보지 않는다.
+///
+/// [faces] = 화면 내 각 얼굴의 `[정규화 중심x, 중심y, 크기]`, **좌→우(중심x) 정렬**.
+/// 사람 수(faces.length)와 **각 사람이 프레임 어디에 어떤 크기로 있는지**(= 구도)를
+/// 그대로 담는다. "3명이 나란히 선" 구도면 [작은 얼굴 3개가 비슷한 높이로 가로 배치].
 class _Composition {
-  _Composition(
-      this.count, this.xSpread, this.ySpread, this.avgSize, this.pose);
-  final int count;
-  final double xSpread;
-  final double ySpread;
-  final double avgSize;
-  final Map<String, List<double>> pose;
-}
+  _Composition(this.faces);
 
-/// 비교할 "뼈"(연결된 두 관절). 위치·크기에 무관하게 **방향(각도)** 만 본다.
-const _bones = <List<PoseLandmarkType>>[
-  [PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder],
-  [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow],
-  [PoseLandmarkType.leftElbow, PoseLandmarkType.leftWrist],
-  [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow],
-  [PoseLandmarkType.rightElbow, PoseLandmarkType.rightWrist],
-  [PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip],
-  [PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip],
-  [PoseLandmarkType.leftHip, PoseLandmarkType.rightHip],
-  [PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee],
-  [PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle],
-  [PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee],
-  [PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle],
-];
+  /// 정규화 얼굴 목록 `[cx, cy, size]`, 좌→우 정렬.
+  final List<List<double>> faces;
+
+  int get count => faces.length;
+}
 
 /// 갤러리를 뒤져 기준 사진과 **사람 구도가 비슷한** 사진을 찾는다.
 ///
 /// 이 앱은 "같은 구도로 주기적으로 찍어 변화를 보는" 가족사진 앱이다. 그래서 핵심
-/// 신호는 배경·색이 아니라 **프레임 안 사람들의 구도** — 몇 명이, 어떻게 배치돼
-/// (나란히/모여/혼자), 어떤 자세인지. 모두 무료·온디바이스 ML Kit으로 추출한다.
+/// 신호는 배경·색·자세가 아니라 **인원수 + 프레임 안 사람들의 배치(구도)** 다.
 ///
-/// 설계(구도 우선):
-///  1. **얼굴검출**로 사람 수와 화면 내 배치(가로/세로 퍼짐, 크기)를 잡고,
-///     **포즈검출**로 대표 인물의 자세(서있음/앉음/브이)를 잡아 [_Composition] 서명을 만든다.
+/// 설계(인원수 + 구도):
+///  1. **얼굴검출**(무료·온디바이스 ML Kit)로 사람 수와 각 얼굴의 위치·크기를 잡아
+///     [_Composition] 서명을 만든다.
 ///  2. 기준 사진에 사람(얼굴)이 없으면 비교 기준이 없어 검색 불가(→ 빈 결과).
-///  3. 시간대별로 펼친 후보마다 같은 서명을 만들어, **사람 수(45%) + 배치(30%) +
-///     자세(25%)** 로 유사도를 매긴다. **사람이 없는 사진(컴퓨터·풍경·물건)은 제외.**
+///  3. 후보마다 같은 서명을 만들어 **인원수(같아야 함) + 얼굴 배치 유사도**로 매긴다.
+///     **사람 없는 사진·흑백(만화·문서)은 제외.** 자세(포즈)는 보지 않는다 — 사용자가
+///     원하는 건 "사진 전체 구도"이지 특정 자세(브이 등)가 아니다.
 ///
-/// 한계: 얼굴+포즈 검출이 장당 ~0.1초라 수만 장을 한 번에 못 본다 → 시간대별 분산
-/// 표본 수백~1,500장을 검사한다. ML Kit 기본 포즈는 대표 1명만 보므로 자세는 보조
-/// 신호다(전원 자세가 필요하면 멀티포즈 모델로 확장).
+/// 한계: 얼굴검출이 장당 ~0.05초라 수만 장을 한 번에 못 본다 → 시간대별 분산 표본
+/// 수백~2,000장을 검사한다.
 class SimilarPhotoFinder {
   const SimilarPhotoFinder();
 
@@ -143,36 +123,33 @@ class SimilarPhotoFinder {
     final sample = await _collectSpread(all, total, math.min(total, 32));
     final ms = await _probeMsPerPhoto(sample);
     return GallerySurvey(
-        total: total, msPerPhoto: ms, quickCount: math.min(total, 500));
+        total: total, msPerPhoto: ms, quickCount: math.min(total, 700));
   }
 
-  /// 장당 처리시간(ms)을 **실제 검색과 동일한 경로**(512px 썸네일 + ML Kit 얼굴+포즈
-  /// 검출)로 표본 몇 장에 대해 실측한다. 검출이 병목(장당 ~0.1초)이므로 이걸 재야
-  /// 예측이 맞는다. 표본 없으면 보수적 폴백.
+  /// 장당 처리시간(ms)을 **실제 검색과 동일한 경로**(512px 썸네일 + ML Kit 얼굴검출)로
+  /// 표본 몇 장에 대해 실측한다. 검출이 병목이므로 이걸 재야 예측이 맞는다.
+  /// 표본 없으면 보수적 폴백.
   Future<double> _probeMsPerPhoto(List<AssetEntity> sample) async {
-    if (sample.isEmpty) return 120;
-    final pose = PoseDetector(
-        options: PoseDetectorOptions(mode: PoseDetectionMode.single));
+    if (sample.isEmpty) return 70;
     final face = FaceDetector(
         options: FaceDetectorOptions(
             performanceMode: FaceDetectorMode.fast, minFaceSize: 0.04));
     final tmpDir = await getTemporaryDirectory();
     try {
-      final probe = sample.take(8).toList(); // 검출은 느리니 8장만 표본.
+      final probe = sample.take(8).toList();
       final sw = Stopwatch()..start();
       var n = 0;
       for (final a in probe) {
         final b = await _safeThumb(a, 512);
         if (b == null) continue;
-        await _detectComposition(pose, face, b, tmpDir);
+        await _detectComposition(face, b, tmpDir);
         n++;
       }
       sw.stop();
-      if (n == 0) return 120;
+      if (n == 0) return 70;
       // 실측에 여유(15%)를 더해 과소예측 방지(콜드 캐시 등).
       return (sw.elapsedMilliseconds / n) * 1.15;
     } finally {
-      await pose.close().timeout(const Duration(seconds: 5), onTimeout: () {});
       await face.close().timeout(const Duration(seconds: 5), onTimeout: () {});
     }
   }
@@ -242,9 +219,6 @@ class SimilarPhotoFinder {
     final clock = Stopwatch()..start();
     bool stop() => clock.elapsed >= budget || (isCancelled?.call() ?? false);
 
-    final pose = PoseDetector(
-      options: PoseDetectorOptions(mode: PoseDetectionMode.single),
-    );
     final face = FaceDetector(
       // minFaceSize 작게 → 단체샷·전신샷의 작은 얼굴도 잡는다(기본 0.1은 놓침).
       options: FaceDetectorOptions(
@@ -255,13 +229,11 @@ class SimilarPhotoFinder {
       final tmpDir = await getTemporaryDirectory();
 
       // ── 기준 구도 먼저 ── 사람(얼굴)이 없으면 비교 기준이 없어 검색 불가.
-      // (배경·색은 보지 않는다 — 구도와 무관해 엉뚱한 사진을 불러왔다.)
-      final refComp = await _detectComposition(pose, face, refBytes, tmpDir);
+      // (배경·색·자세는 보지 않는다 — 인원수+배치만 본다.)
+      final refComp = await _detectComposition(face, refBytes, tmpDir);
       if (refComp == null) return const [];
       debugPrint('[comp] ref count=${refComp.count} '
-          'xS=${refComp.xSpread.toStringAsFixed(2)} '
-          'yS=${refComp.ySpread.toStringAsFixed(2)} '
-          'sz=${refComp.avgSize.toStringAsFixed(2)} poseBones=${refComp.pose.length}');
+          'faces=${refComp.faces.map((f) => f.map((v) => v.toStringAsFixed(2)).toList()).toList()}');
 
       // 갤러리 앨범 목록 — 네이티브 호출이라 타임아웃으로 감싼다.
       final paths = await PhotoManager.getAssetPathList(
@@ -280,9 +252,9 @@ class SimilarPhotoFinder {
       final assets = await _collectSpread(all, total, math.min(total, scanLimit));
       if (assets.isEmpty) return const [];
 
-      // ── 후보마다 얼굴+포즈 검출 → 사람 구도 유사도 ──
+      // ── 후보마다 얼굴검출 → 사람 구도 유사도 ──
       // 썸네일은 6장씩 동시에 받아두고(플랫폼 채널), 검출은 순차로(한 인스턴스).
-      // 사람이 없는 사진은 추가하지 않는다 → 컴퓨터·풍경·물건 사진 자동 제외.
+      // 사람이 없는 사진·흑백은 추가하지 않는다 → 컴퓨터·풍경·물건·만화 자동 제외.
       final matches = <SimilarMatch>[];
       const fetch = 6;
       for (var start = 0; start < assets.length; start += fetch) {
@@ -294,8 +266,8 @@ class SimilarPhotoFinder {
           if (stop()) break;
           final b = thumbs[k];
           if (b == null) continue;
-          final comp = await _detectComposition(pose, face, b, tmpDir);
-          if (comp == null) continue; // 사람 없음 → 제외.
+          final comp = await _detectComposition(face, b, tmpDir);
+          if (comp == null) continue; // 사람 없음/흑백 → 제외.
           final sim = _compositionSimilarity(refComp, comp);
           if (sim >= compFloor) matches.add(SimilarMatch(sub[k], sim));
         }
@@ -317,7 +289,6 @@ class SimilarPhotoFinder {
       return result;
     } finally {
       // close()도 네이티브 호출 — 손상된 ML Kit에서 멈추지 않도록 타임아웃.
-      await pose.close().timeout(const Duration(seconds: 5), onTimeout: () {});
       await face.close().timeout(const Duration(seconds: 5), onTimeout: () {});
     }
   }
@@ -352,8 +323,8 @@ class SimilarPhotoFinder {
 
   /// 바이트 → **사람 구도 서명**([_Composition]). 사람(얼굴)이 없으면 null → 결과 제외.
   ///
-  /// 임시 파일에 한 번만 써서 얼굴+포즈 검출을 같은 이미지에 돌린다(IO 절약).
-  Future<_Composition?> _detectComposition(PoseDetector poseDet,
+  /// 임시 파일에 한 번 써서 얼굴검출을 돌린다. 흑백·무인물은 null.
+  Future<_Composition?> _detectComposition(
       FaceDetector faceDet, Uint8List bytes, Directory tmpDir) async {
     File? tmp;
     try {
@@ -386,29 +357,21 @@ class SimilarPhotoFinder {
       // ML Kit 얼굴검출이 만화 속 그려진 얼굴까지 잡아 오매칭하던 문제를 막는다.
       if (sat < 0.08) return null;
 
-      // 얼굴(사람 수·배치) — 타임아웃으로 멈춤 방지.
+      // 얼굴(사람 수·위치·크기) — 타임아웃으로 멈춤 방지.
       final faces = await faceDet
           .processImage(input)
           .timeout(const Duration(seconds: 8), onTimeout: () => const <Face>[]);
       if (faces.isEmpty) return null; // 사람 없음 → 제외.
-      var minX = 1.0, maxX = 0.0, minY = 1.0, maxY = 0.0, sizeSum = 0.0;
+      final list = <List<double>>[];
       for (final f in faces) {
         final r = f.boundingBox;
         final cx = ((r.left + r.width / 2) / w).clamp(0.0, 1.0);
         final cy = ((r.top + r.height / 2) / h).clamp(0.0, 1.0);
-        minX = math.min(minX, cx);
-        maxX = math.max(maxX, cx);
-        minY = math.min(minY, cy);
-        maxY = math.max(maxY, cy);
-        sizeSum += (r.width / w).clamp(0.0, 1.0);
+        final sz = (r.width / w).clamp(0.0, 1.0);
+        list.add([cx, cy, sz]);
       }
-      final xSpread = faces.length > 1 ? maxX - minX : 0.0;
-      final ySpread = faces.length > 1 ? maxY - minY : 0.0;
-      final avgSize = sizeSum / faces.length;
-
-      // 대표 인물 자세(서있음/앉음/브이 구분). 못 잡으면 빈 맵.
-      final pose = await _bonesFromImage(poseDet, input);
-      return _Composition(faces.length, xSpread, ySpread, avgSize, pose);
+      list.sort((a, b) => a[0].compareTo(b[0])); // 좌→우 정렬(짝짓기 기준).
+      return _Composition(list);
     } catch (_) {
       return null;
     } finally {
@@ -433,97 +396,39 @@ class SimilarPhotoFinder {
     return n == 0 ? 1.0 : sum / n;
   }
 
-  /// InputImage → 대표 인물의 뼈 방향 단위벡터 맵(뼈이름 → [ux, uy]).
-  /// 사람/포즈 없거나 실패 시 빈 맵. 신뢰도 0.5 미만 관절은 제외.
-  Future<Map<String, List<double>>> _bonesFromImage(
-      PoseDetector detector, InputImage input) async {
-    try {
-      final poses = await detector
-          .processImage(input)
-          .timeout(const Duration(seconds: 8), onTimeout: () => const <Pose>[]);
-      if (poses.isEmpty) return <String, List<double>>{};
-      final lm = poses.first.landmarks;
-      final bones = <String, List<double>>{};
-      for (final bone in _bones) {
-        final a = lm[bone[0]];
-        final b = lm[bone[1]];
-        if (a == null || b == null) continue;
-        if (a.likelihood < 0.5 || b.likelihood < 0.5) continue;
-        final dx = b.x - a.x;
-        final dy = b.y - a.y;
-        final len = math.sqrt(dx * dx + dy * dy);
-        if (len < 1e-3) continue;
-        bones['${bone[0].name}_${bone[1].name}'] = [dx / len, dy / len];
-      }
-      return bones;
-    } catch (_) {
-      return <String, List<double>>{};
-    }
-  }
-
-  /// 두 사진의 **사람 구도 유사도**(0~1).
+  /// 두 사진의 **사람 구도 유사도**(0~1) = 인원수 + 얼굴 배치(위치·크기).
   ///
-  /// 사람 수가 먼저 맞아야 한다(다른 인원수 = 다른 구도). 같은 인원수 안에서:
-  ///  - **여러 명**이면 화면 내 **배치**(나란히/모여)가 핵심 → 배치 비중을 크게.
-  ///  - **혼자**면 배치가 무의미(퍼짐 0)하므로 **자세**(브이/팔/앉음)가 핵심 → 자세 위주.
-  /// 인원수가 1명 차이면 절반 감점, 2명 이상이면 0(완전히 다른 구도).
+  /// 1) **인원수**가 먼저 맞아야 한다(다른 인원수 = 다른 구도). 정확히 같으면 만점,
+  ///    1명 차이는 큰 감점, 2명 이상 차이는 0.
+  /// 2) 같은 인원수면 얼굴들을 **좌→우 순서로 짝지어** 위치·크기 차이로 배치를 비교한다.
+  ///    "3명이 비슷한 위치·크기로 있는" 구도끼리 높게 나온다. 자세(포즈)는 보지 않는다.
   double _compositionSimilarity(_Composition r, _Composition c) {
     final dc = (r.count - c.count).abs();
     final countFactor = dc == 0
         ? 1.0
         : dc == 1
-            ? 0.5
+            ? 0.4
             : 0.0;
     if (countFactor == 0) return 0;
-    // 배치: 가로/세로 퍼짐 + 평균 얼굴 크기 패턴이 비슷할수록 1.
-    final arr = (1.0 -
-            ((r.xSpread - c.xSpread).abs() +
-                    (r.ySpread - c.ySpread).abs() +
-                    (r.avgSize - c.avgSize).abs()) /
-                3)
-        .clamp(0.0, 1.0);
-    // 자세: 양쪽 다 대표 자세가 잡혔을 때만. 한쪽이라도 없으면 중립(0.5).
-    final poseScore = (r.pose.length >= 3 && c.pose.length >= 3)
-        ? _poseSimilarity(r.pose, c.pose)
-        : 0.5;
-    final within = r.count <= 1
-        ? 0.25 * arr + 0.75 * poseScore // 혼자 → 자세 위주
-        : 0.55 * arr + 0.45 * poseScore; // 여러 명 → 배치 위주
-    return (countFactor * within).clamp(0.0, 1.0);
-  }
 
-  /// 두 자세의 유사도(0~1) — 공통 뼈들의 방향 코사인 **가중 평균**. 공통 뼈 3개 미만 0.
-  ///
-  /// **팔 뼈(어깨→팔꿈치, 팔꿈치→손목)에 큰 가중치**를 준다. 서 있는 사람은 몸통·다리
-  /// 뼈가 다 비슷해서, 동일 가중이면 "그냥 선 사진"과 "브이 한 사진"이 똑같이 높게 나온다.
-  /// 팔을 강조해야 "브이·팔 든 자세"가 "팔 내린 자세"보다 위로 온다(사용자 의도).
-  double _poseSimilarity(
-      Map<String, List<double>> a, Map<String, List<double>> b) {
-    var sum = 0.0;
-    var wsum = 0.0;
-    var n = 0;
-    for (final key in a.keys) {
-      final vb = b[key];
-      if (vb == null) continue;
-      final va = a[key]!;
-      final w = _armBones.contains(key) ? 3.0 : 1.0;
-      final cos = (va[0] * vb[0] + va[1] * vb[1]).clamp(-1.0, 1.0);
-      sum += w * (cos + 1) / 2; // [-1,1] → [0,1]
-      wsum += w;
-      n++;
+    final n = math.min(r.faces.length, c.faces.length);
+    if (n == 0) return 0;
+    var posDist = 0.0; // 짝지은 얼굴 중심의 평균 거리(0~약1.41).
+    var sizeDist = 0.0; // 짝지은 얼굴 크기의 평균 차(0~1).
+    for (var i = 0; i < n; i++) {
+      final a = r.faces[i], b = c.faces[i];
+      final dx = a[0] - b[0], dy = a[1] - b[1];
+      posDist += math.sqrt(dx * dx + dy * dy);
+      sizeDist += (a[2] - b[2]).abs();
     }
-    if (n < 3 || wsum == 0) return 0;
-    return (sum / wsum).clamp(0.0, 1.0);
+    posDist /= n;
+    sizeDist /= n;
+    // 위치가 핵심(75%), 크기 보조(25%). 거리가 작을수록 1에 가깝게.
+    final layout = (0.75 * (1 - posDist / 0.5) + 0.25 * (1 - sizeDist / 0.3))
+        .clamp(0.0, 1.0);
+    return (countFactor * layout).clamp(0.0, 1.0);
   }
 }
-
-/// 팔 뼈 키(_bonesFromImage의 '${a.name}_${b.name}' 형식) — 자세 비교에서 가중된다.
-const _armBones = <String>{
-  'leftShoulder_leftElbow',
-  'leftElbow_leftWrist',
-  'rightShoulder_rightElbow',
-  'rightElbow_rightWrist',
-};
 
 final similarPhotoFinderProvider =
     Provider<SimilarPhotoFinder>((ref) => const SimilarPhotoFinder());
