@@ -47,28 +47,45 @@ class _ProjectShellState extends ConsumerState<ProjectShell>
       appBar: AppBar(
         title: Text(project.title),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.library_add_outlined),
-            tooltip: '예전 사진 채우기',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                  builder: (_) => BackfillScreen(project: project)),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: '앨범 설정',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                  builder: (_) => AlbumSettingsScreen(project: project)),
-            ),
+          // 아이콘만 있으면 부모가 뜻을 모름 → 글자 라벨이 있는 메뉴(⋮)로.
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            tooltip: '메뉴',
+            onSelected: (v) {
+              if (v == 'backfill') {
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => BackfillScreen(project: project)));
+              } else if (v == 'settings') {
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => AlbumSettingsScreen(project: project)));
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'backfill',
+                child: ListTile(
+                  leading: Icon(Icons.library_add_outlined),
+                  title: Text('예전 사진 채우기'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'settings',
+                child: ListTile(
+                  leading: Icon(Icons.settings_outlined),
+                  title: Text('앨범 설정'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
           ),
         ],
         bottom: TabBar(
           controller: _tab,
           tabs: const [
             Tab(icon: Icon(Icons.photo_library_outlined), text: '앨범'),
-            Tab(icon: Icon(Icons.auto_awesome_motion_outlined), text: '추억'),
+            // '추억'(모호) → '변화 보기'(타임랩스·비교라는 보상이 분명히 드러나게).
+            Tab(icon: Icon(Icons.play_circle_outline), text: '변화 보기'),
           ],
         ),
       ),

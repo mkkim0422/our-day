@@ -45,6 +45,8 @@ class _AlignmentAdjusterScreenState
   double _rotation = 0.0;
   double _refOpacity = 0.5;
   bool _saving = false;
+  // 정렬은 '선택'이다. 기본은 바로 저장(확인 화면), 원하는 사람만 맞추기 모드로 진입.
+  bool _aligning = false;
   Size _viewSize = Size.zero;
 
   // 제스처 시작 시점 스냅샷.
@@ -75,6 +77,18 @@ class _AlignmentAdjusterScreenState
       _offset = Offset.zero;
       _scale = 1.0;
       _rotation = 0.0;
+    });
+  }
+
+  /// '맞추기' 모드를 켜고 끈다. 끌 때는 조정값을 초기화해(미적용) 깔끔히 되돌린다.
+  void _toggleAligning() {
+    setState(() {
+      _aligning = !_aligning;
+      if (!_aligning) {
+        _offset = Offset.zero;
+        _scale = 1.0;
+        _rotation = 0.0;
+      }
     });
   }
 
@@ -161,7 +175,7 @@ class _AlignmentAdjusterScreenState
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: Text(_hasReference ? '같은 포즈로 맞추기' : '사진 확인'),
+        title: Text(_aligning ? '같은 포즈로 맞추기' : '사진 확인'),
       ),
       body: Column(
         children: [
@@ -172,10 +186,10 @@ class _AlignmentAdjusterScreenState
                 return Stack(
                   fit: StackFit.expand,
                   children: [
-                    // 조정 대상: 새 촬영물(제스처로 이동/스케일/회전).
+                    // 조정 대상: 새 촬영물(맞추기 모드에서만 제스처로 이동/스케일/회전).
                     GestureDetector(
-                      onScaleStart: _hasReference ? _onScaleStart : null,
-                      onScaleUpdate: _hasReference ? _onScaleUpdate : null,
+                      onScaleStart: _aligning ? _onScaleStart : null,
+                      onScaleUpdate: _aligning ? _onScaleUpdate : null,
                       child: Transform(
                         alignment: Alignment.center,
                         transform: Matrix4.identity()
@@ -189,8 +203,8 @@ class _AlignmentAdjusterScreenState
                         ),
                       ),
                     ),
-                    // 기준 사진 고스트(고정, 반투명) — 정렬 타깃.
-                    if (_hasReference)
+                    // 기준 사진 고스트 — '맞추기' 모드에서만 표시(정렬 타깃).
+                    if (_hasReference && _aligning)
                       IgnorePointer(
                         child: Opacity(
                           opacity: _refOpacity,
@@ -200,7 +214,7 @@ class _AlignmentAdjusterScreenState
                           ),
                         ),
                       ),
-                    const GuideGrid(),
+                    if (_aligning) const GuideGrid(),
                   ],
                 );
               },
@@ -218,31 +232,77 @@ class _AlignmentAdjusterScreenState
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        children: _aligning ? _aligningControls() : _confirmControls(),
+      ),
+    );
+  }
+
+  /// 기본 화면 — "이대로 저장". 정렬은 강요하지 않는다(원하면 아래 버튼으로).
+  List<Widget> _confirmControls() {
+    return [
+      Text(
+        _hasReference
+            ? '이대로 저장할게요. 직전 사진에 더 맞추고 싶으면 아래에서 조정하세요.'
+            : '이 컷을 기록에 저장할게요.',
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: Colors.white60, fontSize: 13, height: 1.4),
+      ),
+      const SizedBox(height: 14),
+      SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: _saving ? null : _save,
+          icon: _saving
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.check),
+          label: Text(_saving ? '저장 중…' : '저장'),
+        ),
+      ),
+      if (_hasReference) ...[
+        const SizedBox(height: 8),
+        TextButton.icon(
+          onPressed: _saving ? null : _toggleAligning,
+          icon: const Icon(Icons.layers_outlined, color: Colors.white70),
+          label: const Text('직전 사진에 맞추기 (선택)',
+              style: TextStyle(color: Colors.white70)),
+        ),
+      ],
+    ];
+  }
+
+  /// 선택적 '맞추기' 모드 — 고스트에 맞춰 미세 조정.
+  List<Widget> _aligningControls() {
+    return [
+      Row(
         children: [
-          if (_hasReference) ...[
-            Row(
-              children: [
-                const Icon(Icons.opacity, color: Colors.white70, size: 20),
-                Expanded(
-                  child: Slider(
-                    value: _refOpacity,
-                    onChanged: (v) => setState(() => _refOpacity = v),
-                  ),
-                ),
-                TextButton(
-                  onPressed: _reset,
-                  child: const Text('초기화'),
-                ),
-              ],
+          const Icon(Icons.opacity, color: Colors.white70, size: 20),
+          Expanded(
+            child: Slider(
+              value: _refOpacity,
+              onChanged: (v) => setState(() => _refOpacity = v),
             ),
-            const Text(
-              '새 사진을 움직여 흐린 기준 사진에 맞추세요 (두 손가락: 확대·회전)',
-              style: TextStyle(color: Colors.white54, fontSize: 12),
-            ),
-            const SizedBox(height: 12),
-          ],
-          SizedBox(
-            width: double.infinity,
+          ),
+          TextButton(onPressed: _reset, child: const Text('초기화')),
+        ],
+      ),
+      const Text(
+        '새 사진을 움직여 흐린 기준 사진에 맞추세요 (두 손가락: 확대·회전)',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: Colors.white54, fontSize: 12),
+      ),
+      const SizedBox(height: 12),
+      Row(
+        children: [
+          TextButton(
+            onPressed: _saving ? null : _toggleAligning,
+            child: const Text('접기', style: TextStyle(color: Colors.white70)),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
             child: FilledButton.icon(
               onPressed: _saving ? null : _save,
               icon: _saving
@@ -252,11 +312,11 @@ class _AlignmentAdjusterScreenState
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.check),
-              label: Text(_saving ? '저장 중…' : '저장'),
+              label: Text(_saving ? '저장 중…' : '맞춰서 저장'),
             ),
           ),
         ],
       ),
-    );
+    ];
   }
 }

@@ -7,6 +7,7 @@ import '../../data/db/app_database.dart';
 import '../capture/backfill_screen.dart';
 import '../capture/capture_detail_screen.dart';
 import '../capture/capture_screen.dart';
+import '../compare/compare_screen.dart';
 import 'home_providers.dart';
 import 'widgets/progress_gauge.dart';
 import 'widgets/timeline_grid.dart';
@@ -36,6 +37,14 @@ class HomeTab extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
         _CtaCard(done: done, onTap: () => _openCapture(context, ref, latest)),
+        // 보상 노출: 2컷 이상이면 "변화를 영상으로" 보러 가는 입구를 위로 올린다.
+        if (captures.length >= 2) ...[
+          const SizedBox(height: 12),
+          _SeeChangesCard(
+            count: captures.length,
+            onTap: () => _openCompare(context),
+          ),
+        ],
         const SizedBox(height: 16),
         ProgressGauge(project: project, captures: captures, now: now),
         const SizedBox(height: 24),
@@ -45,10 +54,16 @@ class HomeTab extends ConsumerWidget {
           Row(
             children: [
               Text('모든 기록', style: Theme.of(context).textTheme.titleMedium),
-              const Spacer(),
+              const SizedBox(width: 8),
               Text('${captures.length}컷',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () => _openBackfill(context),
+                icon: const Icon(Icons.library_add_outlined, size: 18),
+                label: const Text('예전 사진 채우기'),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -85,6 +100,12 @@ class HomeTab extends ConsumerWidget {
   Future<void> _openBackfill(BuildContext context) async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => BackfillScreen(project: project)),
+    );
+  }
+
+  Future<void> _openCompare(BuildContext context) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => CompareScreen(project: project)),
     );
   }
 }
@@ -157,14 +178,14 @@ class _CtaCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        done ? '이번 기간 기록 완료' : '이번 기간 한 컷 찍기',
+                        done ? '한 컷 더 찍기' : '이번 기간 한 컷 찍기',
                         style: text.titleMedium
                             ?.copyWith(fontWeight: FontWeight.w800, color: fg),
                       ),
                       const SizedBox(height: 3),
                       Text(
                         done
-                            ? '한 컷 더 남기고 싶으면 눌러요'
+                            ? '이번 기간은 이미 기록했어요 ✓'
                             : '같은 포즈로 그날의 우리를 남겨요',
                         style: text.bodySmall?.copyWith(color: subFg),
                       ),
@@ -174,6 +195,53 @@ class _CtaCard extends StatelessWidget {
                 Icon(Icons.chevron_right, color: fg),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "변화 보기" 카드 — 2컷 이상일 때 홈 상단에 보상(타임랩스·비교)을 노출한다.
+class _SeeChangesCard extends StatelessWidget {
+  const _SeeChangesCard({required this.count, required this.onTap});
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final radius = BorderRadius.circular(18);
+    return Material(
+      color: scheme.surfaceContainerHighest,
+      borderRadius: radius,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: radius,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          child: Row(
+            children: [
+              Icon(Icons.play_circle_fill_rounded,
+                  size: 34, color: scheme.primary),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('변화 보기',
+                        style: text.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    Text('$count컷을 타임랩스·비교로 한눈에',
+                        style: text.bodySmall
+                            ?.copyWith(color: scheme.onSurfaceVariant)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
+            ],
           ),
         ),
       ),
