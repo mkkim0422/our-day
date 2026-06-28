@@ -4,11 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ads/ad_slot.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/db/app_database.dart';
+import '../../services/providers.dart';
 import '../capture/backfill_screen.dart';
 import '../capture/capture_detail_screen.dart';
 import '../capture/capture_screen.dart';
 import '../compare/compare_screen.dart';
 import 'home_providers.dart';
+import 'widgets/milestone_card.dart';
 import 'widgets/progress_gauge.dart';
 import 'widgets/timeline_grid.dart';
 
@@ -33,10 +35,26 @@ class HomeTab extends ConsumerWidget {
     final done = hasCaptureInCurrentPeriod(project, captures, now);
     final latest = captures.isNotEmpty ? captures.first : null;
 
+    // 마일스톤(백일·돌 등) — 생일이 설정돼 있고 그 시점 근처 사진이 있으면 노출.
+    final birthday =
+        ref.watch(appSettingsProvider).value?.projectBirthdays[project.id];
+    final milestone = (birthday != null && captures.length >= 2)
+        ? MilestoneCard.pick(birthday, captures, now)
+        : null;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
         _CtaCard(done: done, onTap: () => _openCapture(context, ref, latest)),
+        // 축하 노출: 백일·돌 등 마일스톤에 도달했으면 가장 위에 띄운다.
+        if (milestone != null) ...[
+          const SizedBox(height: 12),
+          MilestoneCard(
+            milestone: milestone.milestone,
+            capture: milestone.capture,
+            onTap: () => _openCompare(context),
+          ),
+        ],
         // 보상 노출: 2컷 이상이면 "변화를 영상으로" 보러 가는 입구를 위로 올린다.
         if (captures.length >= 2) ...[
           const SizedBox(height: 12),
