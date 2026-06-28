@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ads/ad_slot.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/db/app_database.dart';
+import '../../data/repositories/providers.dart';
 import '../../services/providers.dart';
 import '../capture/backfill_screen.dart';
 import '../capture/capture_detail_screen.dart';
@@ -86,9 +87,13 @@ class HomeTab extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
           // 전체 기록 그리드(앨범 탭 = 촬영 CTA + 진척 + 모든 사진).
+          // 사진을 길게 누르면 드래그로 순서를 바꿀 수 있다(모든 곳에 반영).
           TimelineGrid(
             captures: captures,
             onTapCell: (c) => _openDetail(context, c),
+            onReorder: (ordered) => ref
+                .read(captureRepositoryProvider)
+                .reorder(ordered.map((c) => c.id).toList()),
           ),
         ],
         const SizedBox(height: 16),

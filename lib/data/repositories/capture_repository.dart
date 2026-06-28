@@ -12,12 +12,33 @@ class CaptureRepository {
   final AppDatabase _db;
   static const _uuid = Uuid();
 
-  /// 프로젝트의 촬영들을 시계열(최신순)로 구독.
+  /// 프로젝트의 촬영들을 표시 순서(최신순)로 구독.
+  ///
+  /// 사용자가 직접 정한 [Captures.sortIndex]가 있으면 그 순서(작을수록 앞=최신쪽),
+  /// 없으면(null) 촬영일 최신순. SQLite에서 ASC는 NULL이 먼저라, 아직 순서를
+  /// 안 정한(또는 새로 찍은) 사진은 자동으로 맨 앞(최신쪽)에 온다.
   Stream<List<Capture>> watchByProject(String projectId) {
     final q = _db.select(_db.captures)
       ..where((c) => c.projectId.equals(projectId))
-      ..orderBy([(c) => OrderingTerm.desc(c.capturedAt)]);
+      ..orderBy([
+        (c) => OrderingTerm.asc(c.sortIndex),
+        (c) => OrderingTerm.desc(c.capturedAt),
+      ]);
     return q.watch();
+  }
+
+  /// 사용자가 그리드에서 길게 눌러 드래그로 정한 순서를 저장.
+  /// [orderedIds]는 화면 표시 순서(앞=최신쪽). 0..n-1로 sortIndex를 다시 부여한다.
+  Future<void> reorder(List<String> orderedIds) async {
+    await _db.batch((b) {
+      for (var i = 0; i < orderedIds.length; i++) {
+        b.update(
+          _db.captures,
+          CapturesCompanion(sortIndex: Value(i)),
+          where: (c) => c.id.equals(orderedIds[i]),
+        );
+      }
+    });
   }
 
   /// 단건 조회(알림 페이로드 → 기준 사진 로드 등).

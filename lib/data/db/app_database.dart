@@ -23,7 +23,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -33,6 +33,8 @@ class AppDatabase extends _$AppDatabase {
           if (from < 2) await m.createTable(captureMembers);
           // v3: 꾸미기 결과 경로(원본 보존, 기록에 꾸민 버전 표시).
           if (from < 3) await m.addColumn(captures, captures.decoratedPath);
+          // v4: 사용자 지정 표시·재생 순서(길게 눌러 드래그 재배치).
+          if (from < 4) await m.addColumn(captures, captures.sortIndex);
         },
         beforeOpen: (details) async {
           // FK 제약(onDelete cascade/setNull) 활성화.

@@ -94,6 +94,10 @@ class Captures extends Table {
   /// 타임랩스·오버레이용으로 그대로 보존(꾸미기 v3).
   TextColumn get decoratedPath => text().nullable()();
 
+  /// 사용자가 그리드에서 직접 정한 표시·재생 순서(작을수록 앞=최신 쪽).
+  /// null이면 촬영일 기준 자동 정렬. 길게 눌러 드래그로 재배치하면 채워진다.
+  IntColumn get sortIndex => integer().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
