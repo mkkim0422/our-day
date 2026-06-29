@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/utils/photo_date.dart';
 import '../../data/db/app_database.dart';
 import '../../services/camera/camera_service.dart';
 import '../../services/providers.dart';
@@ -234,20 +235,24 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
   }
 
   /// 입력경로 2: 갤러리에서 불러오기(②-1). 동일하게 정렬 조정 후 저장.
+  /// 예전 사진이 많으므로 날짜는 사진 EXIF 촬영일에서 가져온다(없으면 오늘).
   Future<void> _pickFromGallery() async {
     if (_busy) return;
     final picked = await _picker.pickImage(source: ImageSource.gallery);
     if (picked == null) return;
-    await _openAdjuster(picked.path);
+    final taken = await readPhotoTakenDate(picked.path);
+    if (!mounted) return;
+    await _openAdjuster(picked.path, capturedAt: taken);
   }
 
-  Future<void> _openAdjuster(String imagePath) async {
+  /// 카메라 촬영은 capturedAt=now(방금 찍음), 갤러리 불러오기는 EXIF 촬영일을 넘긴다.
+  Future<void> _openAdjuster(String imagePath, {DateTime? capturedAt}) async {
     final result = await Navigator.of(context).push<Capture>(
       MaterialPageRoute(
         builder: (_) => AlignmentAdjusterScreen(
           project: widget.project,
           capturedImagePath: imagePath,
-          capturedAt: DateTime.now(),
+          capturedAt: capturedAt ?? DateTime.now(),
           referenceImagePath: _referencePath,
           placeId: widget.placeId,
         ),

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/utils/backfill_dates.dart';
+import '../../core/utils/photo_date.dart';
 import '../../core/utils/schedule_period.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repositories/providers.dart';
@@ -26,9 +27,12 @@ class BackfillScreen extends ConsumerStatefulWidget {
 }
 
 class _BackfillItem {
-  _BackfillItem({required this.path, required this.date});
+  _BackfillItem({required this.path, required this.date, this.fromExif = false});
   final String path;
   DateTime date;
+
+  /// 날짜를 사진 EXIF 촬영일에서 가져왔는지(아니면 주기 기반 자동 배치).
+  bool fromExif;
 }
 
 class _BackfillScreenState extends ConsumerState<BackfillScreen> {
@@ -42,7 +46,7 @@ class _BackfillScreenState extends ConsumerState<BackfillScreen> {
       if (mounted) setState(() {});
       return;
     }
-    // 새로 고른 사진들에 주기 기반 추천 날짜를 부여(기존 항목 뒤로 이어 붙임).
+    // 사진 EXIF 촬영일을 우선 사용, 없으면 주기 기반 추천 날짜로 폴백(기존 뒤에 이어붙임).
     final suggestions = BackfillDates.suggest(
       widget.project.scheduleType,
       widget.project.scheduleConfig,
@@ -50,11 +54,17 @@ class _BackfillScreenState extends ConsumerState<BackfillScreen> {
       _items.length + picked.length,
     ).skip(_items.length).toList();
 
-    setState(() {
-      for (var i = 0; i < picked.length; i++) {
-        _items.add(_BackfillItem(path: picked[i].path, date: suggestions[i]));
-      }
-    });
+    final newItems = <_BackfillItem>[];
+    for (var i = 0; i < picked.length; i++) {
+      final taken = await readPhotoTakenDate(picked[i].path);
+      newItems.add(_BackfillItem(
+        path: picked[i].path,
+        date: taken ?? suggestions[i],
+        fromExif: taken != null,
+      ));
+    }
+    if (!mounted) return;
+    setState(() => _items.addAll(newItems));
   }
 
   Future<void> _editDate(_BackfillItem item) async {
@@ -66,12 +76,10 @@ class _BackfillScreenState extends ConsumerState<BackfillScreen> {
       lastDate: now,
     );
     if (picked != null) {
-      setState(() => item.date = DateTime(
-            picked.year,
-            picked.month,
-            picked.day,
-            12,
-          ));
+      setState(() {
+        item.date = DateTime(picked.year, picked.month, picked.day, 12);
+        item.fromExif = false; // 직접 고친 날짜는 더 이상 '촬영일'이 아님.
+      });
     }
   }
 
@@ -188,7 +196,7 @@ class _BackfillScreenState extends ConsumerState<BackfillScreen> {
                     ?.copyWith(fontWeight: FontWeight.w800, height: 1.25)),
             const SizedBox(height: 10),
             Text('갤러리에서 원하는 사진을 여러 장 골라 한 번에 채워요.\n'
-                '각 사진 날짜는 주기에 맞춰 과거로 자동 배치되고, 개별 수정할 수 있어요.',
+                '날짜는 사진 정보(촬영일)에서 자동으로 가져오고, 정보가 없으면 주기에 맞춰 배치돼요. 개별 수정도 가능해요.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: scheme.onSurfaceVariant, height: 1.4)),
@@ -270,11 +278,36 @@ class _ItemTile extends StatelessWidget {
                       .titleSmall
                       ?.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 2),
-              Text(
-                '${item.date.year}.${item.date.month.toString().padLeft(2, '0')}.${item.date.day.toString().padLeft(2, '0')}',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
+              Row(
+                children: [
+                  Text(
+                    '${item.date.year}.${item.date.month.toString().padLeft(2, '0')}.${item.date.day.toString().padLeft(2, '0')}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                  ),
+                  const SizedBox(width: 6),
+                  // 날짜 출처 표시 — 촬영일(EXIF) vs 자동 배치.
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: item.fromExif
+                          ? scheme.primaryContainer
+                          : scheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(6),
                     ),
+                    child: Text(
+                      item.fromExif ? '촬영일' : '자동',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: item.fromExif
+                                ? scheme.onPrimaryContainer
+                                : scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
