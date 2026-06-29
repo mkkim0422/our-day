@@ -24,7 +24,7 @@ class TimelapsePlayer extends StatefulWidget {
   const TimelapsePlayer({
     super.key,
     required this.framesAsc,
-    this.frameDuration = const Duration(milliseconds: 850),
+    this.frameDuration = const Duration(milliseconds: 1250),
   });
 
   /// 시간순(오래된→최근) 정렬된 촬영들.
@@ -107,7 +107,7 @@ class _TimelapsePlayerState extends State<TimelapsePlayer> {
             // 크로스페이드(은은) 또는 즉시 전환(바로).
             AnimatedSwitcher(
               duration:
-                  gentle ? const Duration(milliseconds: 550) : Duration.zero,
+                  gentle ? const Duration(milliseconds: 600) : Duration.zero,
               switchInCurve: Curves.easeInOut,
               switchOutCurve: Curves.easeInOut,
               // 이전 프레임 위에 새 프레임이 겹쳐 페이드(전체화면 정렬).

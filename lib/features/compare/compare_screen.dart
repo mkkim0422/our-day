@@ -58,6 +58,10 @@ class _CompareViewState extends ConsumerState<CompareView> {
   String? _filterMemberId;
   Set<String>? _filterCaptureIds;
 
+  // '그때 vs 지금'에 쓸 두 시점(사용자가 직접 선택). null이면 첫↔최신 기본값.
+  String? _thenId;
+  String? _nowId;
+
   Future<void> _selectMember(String? memberId) async {
     if (memberId == null) {
       setState(() {
@@ -117,8 +121,10 @@ class _CompareViewState extends ConsumerState<CompareView> {
       );
     }
 
-    final first = asc.first;
-    final last = asc.last;
+    // 기본은 첫↔최신, 사용자가 고른 두 시점이 있으면 그걸 사용(없거나 필터로
+    // 사라졌으면 자동으로 첫/최신으로 폴백).
+    final thenCap = asc.firstWhere((c) => c.id == _thenId, orElse: () => asc.first);
+    final nowCap = asc.firstWhere((c) => c.id == _nowId, orElse: () => asc.last);
     final birthday =
         ref.watch(appSettingsProvider).value?.projectBirthdays[widget.project.id];
 
@@ -130,7 +136,7 @@ class _CompareViewState extends ConsumerState<CompareView> {
           const SizedBox(height: 16),
         ],
         // ── 히어로: 타임랩스(가장 핵심) + 1차 액션 한 개.
-        Text('${asc.length}컷의 타임랩스',
+        Text('${asc.length}컷, 우리 이야기',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w800)),
         const SizedBox(height: 12),
@@ -162,16 +168,30 @@ class _CompareViewState extends ConsumerState<CompareView> {
           label: const Text('기기에 저장'),
         ),
         const SizedBox(height: 32),
-        // ── 그때 vs 지금(공유 이미지).
+        // ── 그때 vs 지금(공유 이미지). 두 시점은 탭해서 직접 고를 수 있다.
         Text('그때 vs 지금',
             style: Theme.of(context)
                 .textTheme
                 .titleMedium
                 ?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
+        Text(
+          '사진을 탭하면 비교할 두 시점을 바꿀 수 있어요.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
         const SizedBox(height: 12),
+        // RepaintBoundary 안(=공유/저장 이미지)에는 탭 안내 같은 부가 UI를 넣지
+        // 않는다(깨끗한 결과물). 선택 동작은 _Side의 GestureDetector로만.
         RepaintBoundary(
           key: _compareKey,
-          child: _CompareCard(first: first, last: last, birthday: birthday),
+          child: _CompareCard(
+            first: thenCap,
+            last: nowCap,
+            birthday: birthday,
+            onPickThen: () => _pickCompareSide(asc, isThen: true),
+            onPickNow: () => _pickCompareSide(asc, isThen: false),
+          ),
         ),
         const SizedBox(height: 32),
         // ── 더 보기(부가 도구는 깔끔한 메뉴로 정리 — 1차 액션은 위 타임랩스 하나).
@@ -184,27 +204,15 @@ class _CompareViewState extends ConsumerState<CompareView> {
         _MenuCard(rows: [
           _MenuRow(
             icon: Icons.image_outlined,
-            title: '비교 이미지 공유',
-            subtitle: '그때 vs 지금을 한 장으로',
-            onTap: _exporting ? null : _shareComparison,
-          ),
-          _MenuRow(
-            icon: Icons.download_rounded,
-            title: '비교 이미지 저장',
-            subtitle: '사진첩(갤러리)에 저장',
-            onTap: _exporting ? null : _saveComparison,
+            title: '이미지로 만들기',
+            subtitle: '그때 vs 지금 · 전체 포스터 — 공유/저장',
+            onTap: _exporting ? null : _showImageExportSheet,
           ),
           _MenuRow(
             icon: Icons.swipe_outlined,
-            title: '밀어서 변화 보기',
+            title: '밀어서 비교',
             subtitle: '슬라이더로 시간을 넘겨요',
             onTap: () => _push(ScrubberScreen(project: widget.project)),
-          ),
-          _MenuRow(
-            icon: Icons.grid_view_rounded,
-            title: '성장 포스터',
-            subtitle: '모든 컷을 한 장 이미지로 모아 인쇄·공유',
-            onTap: () => _push(CollagePosterScreen(project: widget.project)),
           ),
           _MenuRow(
             icon: Icons.show_chart,
@@ -219,6 +227,110 @@ class _CompareViewState extends ConsumerState<CompareView> {
 
   void _push(Widget screen) {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  }
+
+  /// '그때'/'지금'에 쓸 사진을 목록에서 직접 고른다(4장 이상이어도 원하는 두 시점 비교).
+  Future<void> _pickCompareSide(List<Capture> asc,
+      {required bool isThen}) async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(isThen ? '‘그때’로 쓸 사진' : '‘지금’으로 쓸 사진',
+                    style: Theme.of(ctx)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700)),
+              ),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final c in asc)
+                    ListTile(
+                      leading: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: File(c.thumbPath).existsSync()
+                              ? Image.file(File(c.thumbPath), fit: BoxFit.cover)
+                              : const ColoredBox(color: Colors.black12),
+                        ),
+                      ),
+                      title: Text(c.periodLabel),
+                      trailing: (isThen ? _thenId : _nowId) == c.id
+                          ? Icon(Icons.check_circle,
+                              color: Theme.of(ctx).colorScheme.primary)
+                          : null,
+                      onTap: () => Navigator.of(ctx).pop(c.id),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        if (isThen) {
+          _thenId = picked;
+        } else {
+          _nowId = picked;
+        }
+      });
+    }
+  }
+
+  /// 이미지 내보내기 통합 시트 — 그때 vs 지금(공유/저장)과 전체 포스터를 한곳에서.
+  void _showImageExportSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.compare_arrows),
+              title: const Text('그때 vs 지금 — 공유'),
+              subtitle: const Text('선택한 두 시점을 한 장으로'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _shareComparison();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.download_rounded),
+              title: const Text('그때 vs 지금 — 저장'),
+              subtitle: const Text('사진첩(갤러리)에 저장'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _saveComparison();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.grid_view_rounded),
+              title: const Text('전체 포스터'),
+              subtitle: const Text('모든 컷을 한 장 이미지로 모아 인쇄·공유'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _push(CollagePosterScreen(project: widget.project));
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _shareComparison() async {
@@ -347,11 +459,15 @@ class _CompareCard extends StatelessWidget {
     required this.first,
     required this.last,
     this.birthday,
+    this.onPickThen,
+    this.onPickNow,
   });
 
   final Capture first;
   final Capture last;
   final DateTime? birthday;
+  final VoidCallback? onPickThen;
+  final VoidCallback? onPickNow;
 
   @override
   Widget build(BuildContext context) {
@@ -368,10 +484,18 @@ class _CompareCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                  child: _Side(capture: first, caption: '그때', birthday: birthday)),
+                  child: _Side(
+                      capture: first,
+                      caption: '그때',
+                      birthday: birthday,
+                      onTap: onPickThen)),
               const SizedBox(width: 8),
               Expanded(
-                  child: _Side(capture: last, caption: '지금', birthday: birthday)),
+                  child: _Side(
+                      capture: last,
+                      caption: '지금',
+                      birthday: birthday,
+                      onTap: onPickNow)),
             ],
           ),
           const SizedBox(height: 10),
@@ -397,11 +521,16 @@ class _CompareCard extends StatelessWidget {
 }
 
 class _Side extends StatelessWidget {
-  const _Side({required this.capture, required this.caption, this.birthday});
+  const _Side(
+      {required this.capture,
+      required this.caption,
+      this.birthday,
+      this.onTap});
 
   final Capture capture;
   final String caption;
   final DateTime? birthday;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -413,17 +542,21 @@ class _Side extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        AspectRatio(
-          aspectRatio: 3 / 4,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: file.existsSync()
-                ? Image.file(file, fit: BoxFit.cover)
-                : Container(
-                    color: scheme.surface,
-                    child: Icon(Icons.image_not_supported_outlined,
-                        color: scheme.onSurfaceVariant),
-                  ),
+        // 탭하면 이 시점을 다른 사진으로 교체(공유 이미지에는 안 보이는 동작).
+        GestureDetector(
+          onTap: onTap,
+          child: AspectRatio(
+            aspectRatio: 3 / 4,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: file.existsSync()
+                  ? Image.file(file, fit: BoxFit.cover)
+                  : Container(
+                      color: scheme.surface,
+                      child: Icon(Icons.image_not_supported_outlined,
+                          color: scheme.onSurfaceVariant),
+                    ),
+            ),
           ),
         ),
         const SizedBox(height: 6),
@@ -621,7 +754,7 @@ class ScrubberScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final capturesAsync = ref.watch(capturesProvider(project.id));
     return Scaffold(
-      appBar: AppBar(title: const Text('밀어서 변화 보기')),
+      appBar: AppBar(title: const Text('밀어서 비교')),
       body: capturesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('불러오기 오류: $e')),

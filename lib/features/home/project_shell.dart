@@ -84,8 +84,8 @@ class _ProjectShellState extends ConsumerState<ProjectShell>
           controller: _tab,
           tabs: const [
             Tab(icon: Icon(Icons.photo_library_outlined), text: '앨범'),
-            // '추억'(모호) → '변화 보기'(타임랩스·비교라는 보상이 분명히 드러나게).
-            Tab(icon: Icon(Icons.play_circle_outline), text: '변화 보기'),
+            // '추억'(모호)/'변화 보기'(딱딱함) → '다시보기'(친숙·타임랩스/비교 보상).
+            Tab(icon: Icon(Icons.play_circle_outline), text: '다시보기'),
           ],
         ),
       ),
