@@ -157,7 +157,7 @@ class StoryEngine {
       stories.add(Story(
         kind: StoryKind.monthly,
         title: '${d.year}년 ${d.month}월',
-        subtitle: '이달의 기록 · ${list.length}장',
+        subtitle: '한 달 동안 · ${list.length}장',
         coverPhotoId: list[list.length ~/ 2].id,
         photoIds: list.map((p) => p.id).toList(),
         start: list.first.takenAt,
