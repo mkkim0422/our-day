@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -7,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:our_day/core/constants/enums.dart';
 import 'package:our_day/data/db/app_database.dart';
 import 'package:our_day/data/repositories/capture_repository.dart';
+import 'package:our_day/data/repositories/member_repository.dart';
 import 'package:our_day/data/repositories/project_repository.dart';
 import 'package:our_day/services/backup/local_backup_service.dart';
 import 'package:path/path.dart' as p;
@@ -103,5 +105,94 @@ void main() {
         await CaptureRepository(db).listByProject(projects.first.id);
     expect(captures, hasLength(1));
     expect(captures.first.filePath, photoPath);
+  });
+
+  test('누수 없음: 구성원·태그·꾸민사진·정렬순서·설정까지 모두 복원된다', () async {
+    // 사진 + 꾸민사진 + 설정 파일을 모두 심는다.
+    final capturesDir = Directory(p.join(temp.path, 'captures'))
+      ..createSync(recursive: true);
+    final thumbsDir = Directory(p.join(temp.path, 'thumbs'))
+      ..createSync(recursive: true);
+    final exportsDir = Directory(p.join(temp.path, 'exports'))
+      ..createSync(recursive: true);
+    final photoPath = p.join(capturesDir.path, 'photo-1.jpg');
+    final thumbPath = p.join(thumbsDir.path, 'photo-1.jpg');
+    final decoPath = p.join(exportsDir.path, 'deco-1.png');
+    final decoBytes = Uint8List.fromList(List.generate(40, (i) => (i * 3) % 256));
+    File(photoPath).writeAsBytesSync(photoBytes);
+    File(thumbPath).writeAsBytesSync(photoBytes);
+    File(decoPath).writeAsBytesSync(decoBytes);
+
+    final project = await ProjectRepository(db).create(
+      title: '우리 가족',
+      scheduleType: ScheduleType.monthly,
+    );
+    final captureRepo = CaptureRepository(db);
+    final capture = await captureRepo.create(
+      project: project,
+      filePath: photoPath,
+      thumbPath: thumbPath,
+      capturedAt: DateTime(2026, 6, 1),
+    );
+    // 구성원 + 태그 + 꾸민사진 + 정렬순서.
+    final memberRepo = MemberRepository(db);
+    final mom = await memberRepo.create(projectId: project.id, name: '엄마', role: '엄마');
+    await memberRepo.setMembersForCapture(capture.id, [mom.id]);
+    await captureRepo.setDecoratedPath(capture.id, decoPath);
+    await captureRepo.reorder([capture.id]); // sortIndex = 0
+
+    // 설정 파일(생일·키·앱잠금).
+    final settingsPath = p.join(temp.path, 'settings.json');
+    File(settingsPath).writeAsStringSync(jsonEncode({
+      'projectBirthdays': {project.id: '2025-03-15T00:00:00.000'},
+      'captureHeights': {capture.id: 92.5},
+      'lockPinHash': 'deadbeef',
+    }));
+
+    final service = LocalBackupService(db);
+    final zipPath = await service.createBackup();
+
+    // zip에 꾸민사진이 들어갔는지.
+    final names = ZipDecoder()
+        .decodeBytes(File(zipPath).readAsBytesSync())
+        .files
+        .map((f) => f.name)
+        .toList();
+    expect(names, contains('decorated/deco-1.png'));
+
+    // 기기 변경 흉내: DB·사진·꾸민사진·설정 모두 삭제.
+    File(photoPath).deleteSync();
+    File(decoPath).deleteSync();
+    File(settingsPath).deleteSync();
+    await ProjectRepository(db).delete(project.id);
+
+    final restored = await service.restoreFromFile(zipPath);
+    expect(restored, 1);
+
+    // 1) 사진·꾸민사진 파일 복구.
+    expect(File(photoPath).existsSync(), isTrue);
+    expect(File(decoPath).existsSync(), isTrue);
+    expect(File(decoPath).readAsBytesSync(), decoBytes);
+
+    // 2) Capture의 꾸민사진 경로·정렬순서 복구.
+    final caps = await captureRepo.listByProject(project.id);
+    expect(caps, hasLength(1));
+    expect(caps.first.decoratedPath, decoPath);
+    expect(caps.first.sortIndex, 0);
+
+    // 3) 구성원 + 태그 복구.
+    final members = await memberRepo.listByProject(project.id);
+    expect(members.map((m) => m.name), contains('엄마'));
+    final tagged = await memberRepo.memberIdsForCapture(capture.id);
+    expect(tagged, contains(mom.id));
+
+    // 4) 설정(settings.json) 복구.
+    expect(File(settingsPath).existsSync(), isTrue);
+    final settings =
+        jsonDecode(File(settingsPath).readAsStringSync()) as Map<String, dynamic>;
+    expect((settings['projectBirthdays'] as Map)[project.id],
+        '2025-03-15T00:00:00.000');
+    expect((settings['captureHeights'] as Map)[capture.id], 92.5);
+    expect(settings['lockPinHash'], 'deadbeef');
   });
 }

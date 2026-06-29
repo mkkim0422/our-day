@@ -1,10 +1,14 @@
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
+import '../../services/backup/local_backup_service.dart';
 import '../../services/location/location_service.dart';
 import '../../services/providers.dart';
 import 'app_lock.dart';
 import 'privacy_policy_screen.dart';
+import 'settings_providers.dart';
 
 /// 앱 전역 설정 — 위치 회상 · 앱 잠금 · 정보.
 ///
@@ -57,12 +61,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onTap: _changePin,
             ),
           const Divider(height: 32),
-          _sectionTitle('데이터'),
+          _sectionTitle('데이터 백업'),
           const ListTile(
             leading: Icon(Icons.shield_outlined),
-            title: Text('사진은 이 기기에 안전하게 저장돼요'),
-            subtitle: Text('자체 서버에 올리지 않아요. 클라우드 자동 백업은 준비 중이에요.'),
+            title: Text('사진은 이 기기에 저장돼요'),
+            subtitle: Text(
+                '폰을 바꾸거나 앱을 지우면 사라질 수 있어요. 백업을 만들어 구글 드라이브·카톡 등에 보관해 두세요.'),
           ),
+          ListTile(
+            leading: const Icon(Icons.backup_outlined),
+            title: const Text('백업 만들기'),
+            subtitle: const Text('사진·기록·꾸민 사진·설정까지 파일 하나로 묶어요'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _createBackup,
+          ),
+          ListTile(
+            leading: const Icon(Icons.restore_outlined),
+            title: const Text('백업에서 복원'),
+            subtitle: const Text('다른 기기의 백업 파일(.zip)을 불러와 되살려요'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _restoreFromExternal,
+          ),
+          _backupsList(),
           const Divider(height: 32),
           _sectionTitle('정보'),
           ListTile(
@@ -198,5 +218,205 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // ── 백업/복원 ──
+
+  /// 이 기기에 저장된 백업 목록.
+  Widget _backupsList() {
+    final backupsAsync = ref.watch(backupsProvider);
+    return backupsAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (backups) {
+        if (backups.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text('이 기기의 백업',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            ),
+            for (final b in backups)
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.folder_zip_outlined),
+                title: Text(_fmtDate(b.modifiedAt)),
+                subtitle: Text(_fmtSize(b.sizeBytes)),
+                trailing: PopupMenuButton<String>(
+                  onSelected: (v) {
+                    if (v == 'share') _shareBackup(b);
+                    if (v == 'restore') _restoreFromPath(b.path);
+                    if (v == 'delete') _deleteBackup(b);
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'share', child: Text('내보내기 · 공유')),
+                    PopupMenuItem(value: 'restore', child: Text('이 백업으로 복원')),
+                    PopupMenuItem(value: 'delete', child: Text('삭제')),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _createBackup() async {
+    final path = await _withProgress<String>(
+      '백업을 만들고 있어요…',
+      () => ref.read(localBackupServiceProvider).createBackup(),
+    );
+    if (path == null || !mounted) return;
+    ref.invalidate(backupsProvider);
+    final share = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('백업을 만들었어요'),
+        content: const Text(
+            '폰 교체·앱 삭제에 대비해 이 파일을 구글 드라이브나 카톡 등 안전한 곳에 내보내 보관하세요.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('나중에')),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('지금 내보내기')),
+        ],
+      ),
+    );
+    if (share == true) {
+      await ref
+          .read(shareServiceProvider)
+          .shareFiles([path], text: '그날 우리 백업');
+    }
+  }
+
+  /// 외부 .zip 선택 → 복원(새 기기 시나리오).
+  Future<void> _restoreFromExternal() async {
+    XFile? file;
+    try {
+      const typeGroup = XTypeGroup(label: '백업 파일', extensions: ['zip']);
+      file = await openFile(acceptedTypeGroups: [typeGroup]);
+    } catch (e) {
+      _snack('파일 선택 실패: $e');
+      return;
+    }
+    if (file == null) return;
+    await _restoreFromPath(file.path);
+  }
+
+  Future<void> _restoreFromPath(String path) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('백업에서 복원할까요?'),
+        content: const Text(
+            '지금 이 기기의 사진·기록이 백업 내용으로 교체돼요. 되돌릴 수 없으니, 필요하면 먼저 현재 상태를 백업해 두세요.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('취소')),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('복원')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final count = await _withProgress<int>(
+      '복원하고 있어요…',
+      () => ref.read(localBackupServiceProvider).restoreFromFile(path),
+    );
+    if (count == null || !mounted) return;
+
+    // DB 밖 설정(생일·키·앱잠금) 재로딩 + 목록 갱신.
+    ref.invalidate(appSettingsProvider);
+    ref.invalidate(backupsProvider);
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('복원 완료'),
+        content: Text(
+            '$count개의 기록을 되살렸어요.\n모든 화면에 완전히 반영되도록 앱을 종료했다가 다시 열어 주세요.'),
+        actions: [
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('확인')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _shareBackup(BackupFileInfo b) async {
+    await ref
+        .read(shareServiceProvider)
+        .shareFiles([b.path], text: '그날 우리 백업');
+  }
+
+  Future<void> _deleteBackup(BackupFileInfo b) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('이 백업을 삭제할까요?'),
+        content: const Text('이 기기에 저장된 백업 파일만 지워져요. 내보내 둔 파일은 그대로예요.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('취소')),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('삭제')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await ref.read(localBackupServiceProvider).deleteBackup(b.path);
+    ref.invalidate(backupsProvider);
+  }
+
+  /// 모달 진행 표시와 함께 [task] 실행. 실패 시 스낵바, 결과는 성공 시에만 반환.
+  Future<T?> _withProgress<T>(String message, Future<T> Function() task) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2.5)),
+              const SizedBox(width: 18),
+              Expanded(child: Text(message)),
+            ],
+          ),
+        ),
+      ),
+    );
+    try {
+      final result = await task();
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      return result;
+    } catch (e) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      _snack('오류가 났어요: $e');
+      return null;
+    }
+  }
+
+  String _fmtDate(DateTime d) =>
+      DateFormat('yyyy.MM.dd HH:mm').format(d);
+
+  String _fmtSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
   }
 }

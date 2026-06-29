@@ -65,6 +65,7 @@ void main() {
       manifest,
       capturesDir: '/new/captures',
       thumbsDir: '/new/thumbs',
+      decoratedDir: '/new/exports',
     );
     expect(restored, 1);
 
@@ -108,6 +109,7 @@ void main() {
       manifest,
       capturesDir: '/new/captures',
       thumbsDir: '/new/thumbs',
+      decoratedDir: '/new/exports',
     );
 
     final projects = await ProjectRepository(target).watchAll().first;
@@ -124,6 +126,7 @@ void main() {
       manifest,
       capturesDir: '/c',
       thumbsDir: '/t',
+      decoratedDir: '/d',
     );
     expect(restored, 0);
   });

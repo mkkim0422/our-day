@@ -56,6 +56,8 @@ dependencies:
   crypto: ^3.0.7
   photo_manager: ^3.9.0
   photo_manager_image_provider: ^2.2.0
+  # 백업 복원 시 외부 .zip 파일 선택(새 기기 시나리오).
+  file_selector: ^1.0.3
 
 dev_dependencies:
   flutter_test:
