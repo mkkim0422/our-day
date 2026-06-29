@@ -7,7 +7,6 @@ import '../../data/repositories/providers.dart';
 import '../../services/backup/local_backup_service.dart';
 import '../../services/location/location_service.dart';
 import '../../services/providers.dart';
-import '../story/story_preview_screen.dart';
 import 'app_lock.dart';
 import 'privacy_policy_screen.dart';
 import 'settings_providers.dart';
@@ -85,17 +84,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onTap: _restoreFromExternal,
           ),
           _backupsList(),
-          const Divider(height: 32),
-          _sectionTitle('실험실 (베타)'),
-          ListTile(
-            leading: const Icon(Icons.auto_stories_outlined),
-            title: const Text('스토리 미리보기'),
-            subtitle: const Text('갤러리를 자동으로 스토리(여행·어느 날 등)로 묶어 미리 보기'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const StoryPreviewScreen()),
-            ),
-          ),
           const Divider(height: 32),
           _sectionTitle('정보'),
           ListTile(

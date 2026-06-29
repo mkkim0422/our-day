@@ -16,6 +16,7 @@ class TimelineGrid extends StatelessWidget {
     required this.captures,
     required this.onTapCell,
     this.onReorder,
+    this.onAddTap,
     this.crossAxisCount = 3,
   });
 
@@ -24,6 +25,10 @@ class TimelineGrid extends StatelessWidget {
 
   /// 새 순서(표시 순서, 앞=최신쪽)를 저장하는 콜백. null이면 읽기 전용.
   final ValueChanged<List<Capture>>? onReorder;
+
+  /// 주어지면 그리드 **맨 끝에 '한 컷 더' 타일**을 붙인다(사진을 다 본 뒤
+  /// 자연스럽게 다음 컷을 더하도록 — 별도 버튼을 나열하지 않기 위함).
+  final VoidCallback? onAddTap;
   final int crossAxisCount;
 
   static const double _aspect = 0.78;
@@ -46,20 +51,67 @@ class TimelineGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasAdd = onAddTap != null;
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: captures.length,
+      itemCount: captures.length + (hasAdd ? 1 : 0),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
         crossAxisSpacing: _spacing,
         mainAxisSpacing: _spacing,
         childAspectRatio: _aspect,
       ),
-      itemBuilder: (context, i) => _TimelineCell(
-        capture: captures[i],
-        onTap: () => onTapCell(captures[i]),
-        onLongPress: _reorderable ? () => _openReorder(context) : null,
+      itemBuilder: (context, i) {
+        if (hasAdd && i == captures.length) {
+          return _AddTile(onTap: onAddTap!);
+        }
+        return _TimelineCell(
+          capture: captures[i],
+          onTap: () => onTapCell(captures[i]),
+          onLongPress: _reorderable ? () => _openReorder(context) : null,
+        );
+      },
+    );
+  }
+}
+
+/// 그리드 끝의 '한 컷 더' 타일 — 사진 셀과 같은 비율로 자연스럽게 이어진다.
+class _AddTile extends StatelessWidget {
+  const _AddTile({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: scheme.primary.withValues(alpha: 0.35), width: 1.5),
+              ),
+              child: Icon(Icons.add_a_photo_outlined,
+                  color: scheme.primary, size: 28),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '한 컷 더',
+            style: Theme.of(context)
+                .textTheme
+                .labelSmall
+                ?.copyWith(color: scheme.primary, fontWeight: FontWeight.w600),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }

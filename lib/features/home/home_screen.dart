@@ -2,20 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ads/ad_slot.dart';
-import '../../core/theme/app_theme.dart';
+import '../../core/constants/enums.dart';
 import '../../data/db/app_database.dart';
 import '../../data/repositories/providers.dart';
 import '../../services/providers.dart';
 import '../capture/backfill_screen.dart';
 import '../capture/capture_detail_screen.dart';
 import '../capture/capture_screen.dart';
-import '../compare/compare_screen.dart';
 import 'home_providers.dart';
 import 'widgets/milestone_card.dart';
 import 'widgets/progress_gauge.dart';
 import 'widgets/timeline_grid.dart';
 
-/// ② 홈 탭 — "이번 기간 한 컷" CTA + 진척 게이지 + 최근 기록(MainShell의 첫 탭).
+/// ② 앨범 탭 — 사진첩이 주인공. 흐름: 상태 한 줄(어디까지 왔나+이번 기간 넛지)
+/// → 사진 그리드(+끝에 '한 컷 더') → 성장 현황(보조). 촬영은 FAB, 예전 사진·
+/// 설정은 ⋮ 메뉴, 비교/타임랩스는 '다시보기' 탭이 담당(중복 입구 없음).
 class HomeTab extends ConsumerWidget {
   const HomeTab({super.key, required this.project});
 
@@ -33,10 +34,21 @@ class HomeTab extends ConsumerWidget {
 
   Widget _content(BuildContext context, WidgetRef ref, List<Capture> captures) {
     final now = DateTime.now();
-    final done = hasCaptureInCurrentPeriod(project, captures, now);
-    final latest = captures.isNotEmpty ? captures.first : null;
 
-    // 마일스톤(백일·돌 등) — 생일이 설정돼 있고 그 시점 근처 사진이 있으면 노출.
+    // ── 시작하러 온 사람: 길 하나(첫 컷)만 또렷하게.
+    if (captures.isEmpty) {
+      return _EmptyAlbum(
+        onCapture: () => _openCapture(context, ref, null),
+        onBackfill: () => _openBackfill(context),
+      );
+    }
+
+    // ── 모아보러 온 사람: 사진첩이 주인공. 흐름은
+    //    ① 어디까지 왔나 + 이번 기간 넛지(한 줄) → ② 사진(+끝에 '한 컷 더')
+    //    → ③ 성장 현황(보조). 촬영은 FAB, 예전 사진·설정은 ⋮ 메뉴가 담당.
+    //    (비교/타임랩스는 상단 '다시보기' 탭이 입구 — 중복 입구를 두지 않는다.)
+    final done = hasCaptureInCurrentPeriod(project, captures, now);
+    final latest = captures.first;
     final birthday =
         ref.watch(appSettingsProvider).value?.projectBirthdays[project.id];
     final milestone = (birthday != null && captures.length >= 2)
@@ -44,58 +56,36 @@ class HomeTab extends ConsumerWidget {
         : null;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       children: [
-        _CtaCard(done: done, onTap: () => _openCapture(context, ref, latest)),
-        // 축하 노출: 백일·돌 등 마일스톤에 도달했으면 가장 위에 띄운다.
+        _StatusNudge(
+          project: project,
+          count: captures.length,
+          done: done,
+          onCapture: () => _openCapture(context, ref, latest),
+        ),
+        // 축하: 백일·돌 등 마일스톤이면 위에 띄운다(탭하면 그 사진으로).
         if (milestone != null) ...[
           const SizedBox(height: 12),
           MilestoneCard(
             milestone: milestone.milestone,
             capture: milestone.capture,
-            onTap: () => _openCompare(context),
+            onTap: () => _openDetail(context, milestone.capture),
           ),
         ],
-        // 보상 노출: 2컷 이상이면 "변화를 영상으로" 보러 가는 입구를 위로 올린다.
-        if (captures.length >= 2) ...[
-          const SizedBox(height: 12),
-          _SeeChangesCard(
-            count: captures.length,
-            onTap: () => _openCompare(context),
-          ),
-        ],
-        const SizedBox(height: 16),
-        ProgressGauge(project: project, captures: captures, now: now),
+        const SizedBox(height: 18),
+        // 사진(주인공) — 길게 누르면 순서 바꾸기, 끝 타일로 '한 컷 더'.
+        TimelineGrid(
+          captures: captures,
+          onTapCell: (c) => _openDetail(context, c),
+          onAddTap: () => _openCapture(context, ref, latest),
+          onReorder: (ordered) => ref
+              .read(captureRepositoryProvider)
+              .reorder(ordered.map((c) => c.id).toList()),
+        ),
         const SizedBox(height: 24),
-        if (captures.isEmpty)
-          _EmptyTimeline(onBackfill: () => _openBackfill(context))
-        else ...[
-          Row(
-            children: [
-              Text('모든 기록', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(width: 8),
-              Text('${captures.length}컷',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () => _openBackfill(context),
-                icon: const Icon(Icons.library_add_outlined, size: 18),
-                label: const Text('예전 사진 채우기'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // 전체 기록 그리드(앨범 탭 = 촬영 CTA + 진척 + 모든 사진).
-          // 사진을 길게 누르면 드래그로 순서를 바꿀 수 있다(모든 곳에 반영).
-          TimelineGrid(
-            captures: captures,
-            onTapCell: (c) => _openDetail(context, c),
-            onReorder: (ordered) => ref
-                .read(captureRepositoryProvider)
-                .reorder(ordered.map((c) => c.id).toList()),
-          ),
-        ],
+        // 보조 정보: 누적·연속·기간 점(사진을 본 뒤 가볍게).
+        ProgressGauge(project: project, captures: captures, now: now),
         const SizedBox(height: 16),
         const AdSlot(placement: AdPlacement.homeBanner),
       ],
@@ -125,190 +115,133 @@ class HomeTab extends ConsumerWidget {
       MaterialPageRoute(builder: (_) => BackfillScreen(project: project)),
     );
   }
-
-  Future<void> _openCompare(BuildContext context) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => CompareScreen(project: project)),
-    );
-  }
 }
 
-/// "이번 기간 한 컷" CTA 카드 — 안 찍었으면 브랜드 그라데이션으로 강조,
-/// 찍었으면 부드러운 완료 카드(② 화면).
-class _CtaCard extends StatelessWidget {
-  const _CtaCard({required this.done, required this.onTap});
+/// 상태 한 줄 — "어디까지 왔나(N번째)"와 "이번 기간 넛지"를 한 카드에 모은다.
+/// 안 찍은 기간이면 [한 컷] 버튼으로 바로 촬영, 찍었으면 조용히 완료 표시.
+/// (큰 CTA 카드를 따로 두지 않고 이 한 줄이 상태+다음 행동을 겸한다.)
+class _StatusNudge extends StatelessWidget {
+  const _StatusNudge({
+    required this.project,
+    required this.count,
+    required this.done,
+    required this.onCapture,
+  });
+
+  final Project project;
+  final int count;
   final bool done;
-  final VoidCallback onTap;
+  final VoidCallback onCapture;
+
+  /// "이번 ○○" 자연스러운 기간 표현(주기별).
+  String get _periodWord => switch (project.scheduleType) {
+        ScheduleType.daily => '오늘',
+        ScheduleType.weekly => '이번 주',
+        ScheduleType.monthly => '이번 달',
+        ScheduleType.yearly => '올해',
+        ScheduleType.biweekly ||
+        ScheduleType.fixedDates ||
+        ScheduleType.manual =>
+          '이번 차례',
+      };
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    final radius = BorderRadius.circular(22);
-
-    // 그라데이션이 파스텔이라 양쪽 상태 모두 진한 플럼 텍스트로 가독성 확보.
-    final fg = scheme.onSurface;
-    final subFg = scheme.onSurfaceVariant;
-
-    final decoration = done
-        ? BoxDecoration(
-            color: scheme.primaryContainer.withValues(alpha: 0.45),
-            borderRadius: radius,
-          )
-        : BoxDecoration(
-            borderRadius: radius,
-            gradient: const LinearGradient(
-              colors: AppTheme.brandGradient,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.brandGradient.last.withValues(alpha: 0.35),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          );
-
-    return Material(
-      color: Colors.transparent,
-      child: Ink(
-        decoration: decoration,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: radius,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
+    final period = _periodWord;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: done
+            ? scheme.surfaceContainerHighest
+            : scheme.primaryContainer.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.55),
-                  ),
-                  child: Icon(
-                    done ? Icons.check_rounded : Icons.camera_alt_rounded,
-                    size: 28,
-                    color: scheme.primary,
-                  ),
+                Text('$count번째 기록',
+                    style: text.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 2),
+                Text(
+                  done ? '$period 기록을 남겼어요 ✓' : '$period, 아직 안 남겼어요',
+                  style: text.bodySmall
+                      ?.copyWith(color: scheme.onSurfaceVariant),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        done ? '한 컷 더 찍기' : '이번 기간 한 컷 찍기',
-                        style: text.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w800, color: fg),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        done
-                            ? '이번 기간은 이미 기록했어요 ✓'
-                            : '같은 포즈로 그날의 우리를 남겨요',
-                        style: text.bodySmall?.copyWith(color: subFg),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_right, color: fg),
               ],
             ),
           ),
-        ),
+          if (done)
+            Icon(Icons.check_circle_rounded, color: scheme.primary, size: 28)
+          else
+            FilledButton.icon(
+              onPressed: onCapture,
+              icon: const Icon(Icons.camera_alt_rounded, size: 18),
+              label: const Text('한 컷'),
+              style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact),
+            ),
+        ],
       ),
     );
   }
 }
 
-/// "변화 보기" 카드 — 2컷 이상일 때 홈 상단에 보상(타임랩스·비교)을 노출한다.
-class _SeeChangesCard extends StatelessWidget {
-  const _SeeChangesCard({required this.count, required this.onTap});
-  final int count;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
-    final radius = BorderRadius.circular(18);
-    return Material(
-      color: scheme.surfaceContainerHighest,
-      borderRadius: radius,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: radius,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          child: Row(
-            children: [
-              Icon(Icons.play_circle_fill_rounded,
-                  size: 34, color: scheme.primary),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('변화 보기',
-                        style: text.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 2),
-                    Text('$count컷을 타임랩스·비교로 한눈에',
-                        style: text.bodySmall
-                            ?.copyWith(color: scheme.onSurfaceVariant)),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 빈 타임라인 안내 — 촬영은 위의 CTA 카드가 단일 기본 액션이므로 여기선
-/// 설명 + '예전 사진 채우기'(별개 동작)만 둔다(버튼 중복 제거).
-class _EmptyTimeline extends StatelessWidget {
-  const _EmptyTimeline({required this.onBackfill});
+/// 빈 앨범 — 시작하러 온 사람에게 길 하나(첫 컷)만 또렷하게.
+class _EmptyAlbum extends StatelessWidget {
+  const _EmptyAlbum({required this.onCapture, required this.onBackfill});
+  final VoidCallback onCapture;
   final VoidCallback onBackfill;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Column(
-        children: [
-          Icon(Icons.photo_camera_back_outlined,
-              size: 44, color: scheme.onSurfaceVariant),
-          const SizedBox(height: 12),
-          Text('아직 사진이 없어요', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 4),
-          Text(
-            '위에서 첫 컷을 찍으면 여기에 그날의 우리가 쌓입니다.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: scheme.onSurfaceVariant),
+    final text = Theme.of(context).textTheme;
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.photo_camera_outlined,
+                  size: 64, color: scheme.primary),
+              const SizedBox(height: 20),
+              Text('첫 컷을 남겨볼까요?',
+                  textAlign: TextAlign.center,
+                  style: text.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              Text(
+                '같은 포즈로 그날의 우리를 기록해요.\n매 기간 한 컷이면 충분해요.',
+                textAlign: TextAlign.center,
+                style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: onCapture,
+                  icon: const Icon(Icons.camera_alt_rounded),
+                  label: const Text('첫 컷 찍기'),
+                  style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: onBackfill,
+                icon: const Icon(Icons.library_add_outlined),
+                label: const Text('예전 사진 불러오기'),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          TextButton.icon(
-            onPressed: onBackfill,
-            icon: const Icon(Icons.library_add_outlined),
-            label: const Text('예전 사진으로 한번에 채우기'),
-          ),
-        ],
+        ),
       ),
     );
   }
