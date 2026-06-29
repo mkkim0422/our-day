@@ -7,10 +7,10 @@ import '../../../data/db/app_database.dart';
 
 /// 촬영 썸네일 그리드(홈 최근·앨범 전체 공용). 셀 탭 → 상세(명세 ②).
 ///
-/// [onReorder]가 주어지면 사진을 **길게 눌러 "정렬 모드"**로 들어가 드래그로 위치를
-/// 바꿀 수 있다(아이폰/갤럭시 홈 화면처럼 흔들리며 재배치). 완료를 누르면 새 순서가
-/// 저장돼 그리드·타임랩스·비교 등 모든 곳에 반영된다.
-class TimelineGrid extends StatefulWidget {
+/// [onReorder]가 주어지면 사진을 **길게 눌러** 전용 "순서 바꾸기" 화면으로 들어가
+/// 드래그로 위치를 바꿀 수 있다. 그 화면 상단의 **저장 버튼은 항상 보이며**(스크롤에
+/// 가려지지 않음), 저장하면 새 순서가 그리드·타임랩스·비교 등 모든 곳에 반영된다.
+class TimelineGrid extends StatelessWidget {
   const TimelineGrid({
     super.key,
     required this.captures,
@@ -26,31 +26,69 @@ class TimelineGrid extends StatefulWidget {
   final ValueChanged<List<Capture>>? onReorder;
   final int crossAxisCount;
 
+  static const double _aspect = 0.78;
+  static const double _spacing = 8;
+
+  bool get _reorderable => onReorder != null;
+
+  Future<void> _openReorder(BuildContext context) async {
+    final result = await Navigator.of(context).push<List<Capture>>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => _ReorderScreen(
+          captures: captures,
+          crossAxisCount: crossAxisCount,
+        ),
+      ),
+    );
+    if (result != null) onReorder?.call(result);
+  }
+
   @override
-  State<TimelineGrid> createState() => _TimelineGridState();
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: captures.length,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        crossAxisSpacing: _spacing,
+        mainAxisSpacing: _spacing,
+        childAspectRatio: _aspect,
+      ),
+      itemBuilder: (context, i) => _TimelineCell(
+        capture: captures[i],
+        onTap: () => onTapCell(captures[i]),
+        onLongPress: _reorderable ? () => _openReorder(context) : null,
+      ),
+    );
+  }
 }
 
-class _TimelineGridState extends State<TimelineGrid>
+/// 전용 "순서 바꾸기" 화면 — 상단 저장 버튼이 항상 보이고, 본문은 스크롤된다.
+/// 저장하면 새 순서를 [Navigator.pop]으로 돌려주고, 닫으면 변경을 버린다.
+class _ReorderScreen extends StatefulWidget {
+  const _ReorderScreen({required this.captures, required this.crossAxisCount});
+
+  final List<Capture> captures;
+  final int crossAxisCount;
+
+  @override
+  State<_ReorderScreen> createState() => _ReorderScreenState();
+}
+
+class _ReorderScreenState extends State<_ReorderScreen>
     with SingleTickerProviderStateMixin {
   static const double _aspect = 0.78;
   static const double _spacing = 8;
 
-  bool _editing = false;
-  late List<Capture> _order = List.of(widget.captures);
+  late final List<Capture> _order = List.of(widget.captures);
+  bool _changed = false;
 
   late final AnimationController _wiggle = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 600),
   )..repeat(reverse: true);
-
-  bool get _reorderable => widget.onReorder != null;
-
-  @override
-  void didUpdateWidget(TimelineGrid old) {
-    super.didUpdateWidget(old);
-    // 편집 중이 아니면 외부(스트림) 순서를 따라간다.
-    if (!_editing) _order = List.of(widget.captures);
-  }
 
   @override
   void dispose() {
@@ -58,91 +96,113 @@ class _TimelineGridState extends State<TimelineGrid>
     super.dispose();
   }
 
-  void _enterEdit() {
-    if (!_reorderable) return;
-    setState(() {
-      _order = List.of(widget.captures);
-      _editing = true;
-    });
-  }
-
-  void _finishEdit() {
-    setState(() => _editing = false);
-    widget.onReorder?.call(List.of(_order));
-  }
-
   void _move(int from, int to) {
     setState(() {
       final item = _order.removeAt(from);
       _order.insert(from < to ? to - 1 : to, item);
+      _changed = true;
     });
+  }
+
+  Future<void> _close() async {
+    if (!_changed) {
+      Navigator.of(context).pop();
+      return;
+    }
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('변경을 저장하지 않고 나갈까요?'),
+        content: const Text('바꾼 순서가 사라져요.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('계속 편집')),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('나가기')),
+        ],
+      ),
+    );
+    if (discard == true && mounted) Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
-    final cells = _editing ? _order : widget.captures;
-    final grid = LayoutBuilder(
-      builder: (context, c) {
-        final n = widget.crossAxisCount;
-        final cellW = (c.maxWidth - _spacing * (n - 1)) / n;
-        final cellH = cellW / _aspect;
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: cells.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: n,
-            crossAxisSpacing: _spacing,
-            mainAxisSpacing: _spacing,
-            childAspectRatio: _aspect,
-          ),
-          itemBuilder: (context, i) => _editing
-              ? _editableCell(cells[i], i, Size(cellW, cellH))
-              : _TimelineCell(
-                  capture: cells[i],
-                  onTap: () => widget.onTapCell(cells[i]),
-                  onLongPress: _reorderable ? _enterEdit : null,
-                ),
-        );
-      },
-    );
-
-    if (!_editing) return grid;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _editBanner(context),
-        const SizedBox(height: 10),
-        grid,
-      ],
-    );
-  }
-
-  Widget _editBanner(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-      decoration: BoxDecoration(
-        color: scheme.primaryContainer.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.drag_indicator, size: 18, color: scheme.primary),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text('사진을 끌어 순서를 바꿔요',
-                style: Theme.of(context).textTheme.bodySmall),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _close();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: _close,
           ),
-          FilledButton(
-            onPressed: _finishEdit,
-            style: FilledButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+          title: const Text('순서 바꾸기'),
+          actions: [
+            // 항상 보이는 저장 — 어디서 들어와도 가려지지 않는다.
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pop(_order),
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: const Text('저장'),
+              ),
             ),
-            child: const Text('완료'),
-          ),
-        ],
+          ],
+        ),
+        body: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              color: scheme.primaryContainer.withValues(alpha: 0.4),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(Icons.drag_indicator, size: 18, color: scheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '사진을 끌어 원하는 자리에 놓으면 순서가 바뀌어요.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: LayoutBuilder(
+                  builder: (context, c) {
+                    final n = widget.crossAxisCount;
+                    final cellW = (c.maxWidth - _spacing * (n - 1)) / n;
+                    final cellH = cellW / _aspect;
+                    return GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _order.length,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: n,
+                        crossAxisSpacing: _spacing,
+                        mainAxisSpacing: _spacing,
+                        childAspectRatio: _aspect,
+                      ),
+                      itemBuilder: (context, i) =>
+                          _editableCell(_order[i], i, Size(cellW, cellH)),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
