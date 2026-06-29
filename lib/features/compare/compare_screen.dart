@@ -12,6 +12,9 @@ import '../capture/alignment_meta.dart';
 import '../capture/backfill_screen.dart';
 import '../capture/capture_screen.dart';
 import '../home/home_providers.dart';
+import '../story/growth_story.dart';
+import '../story/growth_story_view.dart';
+import '../story/story_providers.dart';
 import 'collage_poster_screen.dart';
 import 'growth_chart_screen.dart';
 import 'widgets/timelapse_player.dart';
@@ -167,7 +170,9 @@ class _CompareViewState extends ConsumerState<CompareView> {
           icon: const Icon(Icons.download_rounded),
           label: const Text('기기에 저장'),
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 28),
+        // ── 성장 스토리(아이·가족 중심 자동 묶음).
+        _storiesSection(),
         // ── 그때 vs 지금(공유 이미지). 두 시점은 탭해서 직접 고를 수 있다.
         Text('그때 vs 지금',
             style: Theme.of(context)
@@ -227,6 +232,43 @@ class _CompareViewState extends ConsumerState<CompareView> {
 
   void _push(Widget screen) {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  }
+
+  /// 성장 스토리 가로 캐러셀(아이·가족 중심 자동 묶음). 없으면 숨김.
+  Widget _storiesSection() {
+    final stories =
+        ref.watch(growthStoriesProvider(widget.project.id)).asData?.value ??
+            const <GrowthStory>[];
+    if (stories.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('성장 스토리',
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
+        Text('우리 아이·가족의 사진을 자동으로 묶었어요',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 196,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: stories.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (_, i) => _StoryCard(
+              story: stories[i],
+              onTap: () =>
+                  _push(GrowthStoryViewScreen(story: stories[i])),
+            ),
+          ),
+        ),
+        const SizedBox(height: 32),
+      ],
+    );
   }
 
   /// '그때'/'지금'에 쓸 사진을 목록에서 직접 고른다(4장 이상이어도 원하는 두 시점 비교).
@@ -827,6 +869,86 @@ class _MenuRow extends StatelessWidget {
       subtitle: Text(subtitle,
           style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
       trailing: Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
+    );
+  }
+}
+
+/// 성장 스토리 카드(가로 캐러셀 1칸) — 표지 + 종류 배지 + 제목/장수.
+class _StoryCard extends StatelessWidget {
+  const _StoryCard({required this.story, required this.onTap});
+
+  final GrowthStory story;
+  final VoidCallback onTap;
+
+  ({IconData icon, String label}) get _badge => switch (story.kind) {
+        GrowthStoryKind.milestone => (icon: Icons.celebration, label: '마일스톤'),
+        GrowthStoryKind.year => (icon: Icons.calendar_today, label: '연도'),
+        GrowthStoryKind.place => (icon: Icons.place, label: '장소'),
+        GrowthStoryKind.member => (icon: Icons.favorite, label: '가족'),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final cover = File(story.cover.decoratedPath ?? story.cover.thumbPath);
+    final badge = _badge;
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 144,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Stack(
+                children: [
+                  AspectRatio(
+                    aspectRatio: 1,
+                    child: cover.existsSync()
+                        ? Image.file(cover, fit: BoxFit.cover)
+                        : ColoredBox(color: scheme.surfaceContainerHighest),
+                  ),
+                  Positioned(
+                    left: 8,
+                    top: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(badge.icon, size: 12, color: Colors.white),
+                          const SizedBox(width: 4),
+                          Text(badge.label,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(story.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700, fontSize: 14)),
+            const SizedBox(height: 2),
+            Text('${story.count}컷',
+                style: TextStyle(
+                    color: scheme.onSurfaceVariant, fontSize: 12)),
+          ],
+        ),
+      ),
     );
   }
 }

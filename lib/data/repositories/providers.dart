@@ -43,3 +43,9 @@ final membersProvider = StreamProvider.family<List<Member>, String>(
   (ref, projectId) =>
       ref.watch(memberRepositoryProvider).watchByProject(projectId),
 );
+
+/// 프로젝트 장소 목록(스트림). 성장 스토리 '○○에서' 라벨에 쓴다.
+final placesProvider = StreamProvider.family<List<Place>, String>(
+  (ref, projectId) =>
+      ref.watch(placeRepositoryProvider).watchByProject(projectId),
+);
