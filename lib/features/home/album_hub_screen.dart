@@ -14,7 +14,7 @@ import 'project_shell.dart';
 
 /// 앨범 허브 — 모든 프로젝트를 카드 그리드로 보여주는 최상위 화면(갤러리식).
 ///
-/// 가장 최근 프로젝트는 큰 히어로 카드("이어서 보기"), 나머지는 2열 그리드 +
+/// 가장 최근 프로젝트는 큰 히어로 카드("최근 앨범"), 나머지는 2열 그리드 +
 /// "새 프로젝트" 추가 타일. 카드 탭 → 그 프로젝트 안([ProjectShell])으로 진입.
 /// 빈 프로젝트(0컷)·커버 없는 경우도 브랜드 플레이스홀더로 안전하게 표시한다.
 class AlbumHubScreen extends ConsumerWidget {
@@ -69,7 +69,7 @@ class AlbumHubScreen extends ConsumerWidget {
               label: const Text('새 기록 만들기'),
             ),
           ] else ...[
-            Text('이어서 보기',
+            Text('최근 앨범',
                 style:
                     text.titleSmall?.copyWith(color: scheme.onSurfaceVariant)),
             const SizedBox(height: 10),
