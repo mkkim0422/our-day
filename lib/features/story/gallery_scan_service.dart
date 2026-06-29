@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
 
@@ -27,15 +29,22 @@ class GalleryScanResult {
 /// 갤럭시식 **1회 색인 + 증분**: GPS(파일에서 읽어 느림)는 [StoryIndexCache]에
 /// 저장해 두고, 다음부터는 캐시에 없는 **새 사진만** 읽는다. 촬영일은 AssetEntity
 /// 에서 바로 얻으므로 매번 전체를 훑어도 빠르다(삭제된 사진은 자연히 정리됨).
+///
+/// 첫 스캔이 느린 원인은 사진마다 GPS를 파일에서 읽는 비용이라, 순차가 아니라
+/// **여러 장 동시(_kConcurrency)** 로 읽어 수천 장도 1분 안팎으로 끝낸다.
 class GalleryScanService {
   const GalleryScanService();
 
   final _cache = const StoryIndexCache();
 
+  /// GPS를 동시에 읽는 사진 수. 플랫폼 채널 IO 대기이므로 병렬이 크게 빠르다.
+  static const _kConcurrency = 16;
+
   Future<PermissionState> requestPermission() =>
       PhotoManager.requestPermissionExtend();
 
-  /// 갤러리 **전체**를 스캔. [onProgress]로 진행 상황 보고.
+  /// 갤러리 **전체**를 스캔. [onProgress]는 느린 부분(새 사진 GPS 읽기) 기준으로
+  /// 진행을 보고한다(done/총 새사진수). 새 사진이 없으면 즉시 끝난다.
   Future<GalleryScanResult> scan({
     void Function(int done, int total)? onProgress,
   }) async {
@@ -53,46 +62,46 @@ class GalleryScanService {
     }
     final all = paths.first;
     final total = await all.assetCountAsync;
-
     final cached = await _cache.load();
-    final next = <String, List<double>?>{}; // 이번 스캔에서 본 것만 → 삭제분 정리
-    final photos = <StoryPhoto>[];
-    var newly = 0;
 
-    const page = 100;
+    // 1) 전체 에셋을 페이지로 모은다(촬영일은 즉시 얻음 — 빠름).
+    final assets = <AssetEntity>[];
+    const page = 200;
     for (var start = 0; start < total; start += page) {
       final end = (start + page) > total ? total : (start + page);
-      final assets = await all.getAssetListRange(start: start, end: end);
-      for (final a in assets) {
-        List<double>? loc;
-        if (cached.containsKey(a.id)) {
-          loc = cached[a.id]; // 이미 읽음(없으면 null)
-        } else {
-          // 새 사진만 파일에서 GPS 읽기(느린 작업).
-          try {
-            final ll = await a.latlngAsync();
-            final la = ll?.latitude;
-            final lo = ll?.longitude;
-            if (la != null && lo != null && (la != 0 || lo != 0)) {
-              loc = [la, lo];
-            }
-          } catch (_) {
-            loc = null;
-          }
-          newly++;
-        }
-        next[a.id] = loc;
-        photos.add(StoryPhoto(
-          id: a.id,
-          takenAt: a.createDateTime,
-          lat: loc?[0],
-          lng: loc?[1],
-        ));
-      }
-      onProgress?.call(photos.length, total);
+      assets.addAll(await all.getAssetListRange(start: start, end: end));
     }
 
-    // 새로 읽었거나 삭제분이 생겼으면 캐시 갱신.
+    // 2) 캐시에 없는 새 사진만 골라 GPS를 **병렬로** 읽는다(가장 느린 부분).
+    final newAssets =
+        assets.where((a) => !cached.containsKey(a.id)).toList();
+    final freshLoc = <String, List<double>?>{};
+    var done = 0;
+    for (var i = 0; i < newAssets.length; i += _kConcurrency) {
+      final end = math.min(i + _kConcurrency, newAssets.length);
+      final chunk = newAssets.sublist(i, end);
+      await Future.wait(chunk.map((a) async {
+        freshLoc[a.id] = await _readLoc(a);
+      }));
+      done += chunk.length;
+      onProgress?.call(done, newAssets.length);
+    }
+
+    // 3) 캐시분 + 새로 읽은 분을 합쳐 결과/다음 캐시를 만든다.
+    final next = <String, List<double>?>{}; // 이번에 본 것만 → 삭제분 정리
+    final photos = <StoryPhoto>[];
+    for (final a in assets) {
+      final loc = cached.containsKey(a.id) ? cached[a.id] : freshLoc[a.id];
+      next[a.id] = loc;
+      photos.add(StoryPhoto(
+        id: a.id,
+        takenAt: a.createDateTime,
+        lat: loc?[0],
+        lng: loc?[1],
+      ));
+    }
+
+    final newly = newAssets.length;
     if (newly > 0 || next.length != cached.length) {
       await _cache.save(next);
     }
@@ -102,5 +111,18 @@ class GalleryScanService {
       totalInGallery: total,
       newlyIndexed: newly,
     );
+  }
+
+  /// 사진 1장의 GPS를 파일에서 읽는다(없거나 0,0이면 null).
+  Future<List<double>?> _readLoc(AssetEntity a) async {
+    try {
+      final ll = await a.latlngAsync();
+      final la = ll?.latitude;
+      final lo = ll?.longitude;
+      if (la != null && lo != null && (la != 0 || lo != 0)) {
+        return [la, lo];
+      }
+    } catch (_) {}
+    return null;
   }
 }

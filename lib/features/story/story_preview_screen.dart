@@ -172,9 +172,9 @@ class _StoryPreviewScreenState extends State<StoryPreviewScreen> {
             const SizedBox(height: 16),
             Text(_progressTotal == 0
                 ? '갤러리를 여는 중…'
-                : '사진 정리 중  $_progress / $_progressTotal  ($pct%)'),
+                : '위치 정보 읽는 중  $_progress / $_progressTotal  ($pct%)'),
             const SizedBox(height: 4),
-            const Text('처음엔 전체를 한 번 정리해요(다음부턴 새 사진만 확인해 빨라요)',
+            const Text('처음엔 새 사진의 위치를 한 번 읽어요(여러 장 동시·다음부턴 즉시)',
                 style: TextStyle(fontSize: 12, color: Colors.grey)),
           ],
         ),
