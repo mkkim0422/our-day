@@ -74,9 +74,11 @@ class HomeTab extends ConsumerWidget {
           ),
         ],
         const SizedBox(height: 18),
-        // 사진(주인공) — 길게 누르면 순서 바꾸기, 끝 타일로 '한 컷 더'.
+        // 사진(주인공) — 2열로 큼직하게. 탭하면 전체화면(좌우 스와이프),
+        // 길게 누르면 순서 바꾸기, 끝 타일로 '한 컷 더'.
         TimelineGrid(
           captures: captures,
+          crossAxisCount: 2,
           onTapCell: (c) => _openDetail(context, c),
           onAddTap: () => _openCapture(context, ref, latest),
           onReorder: (ordered) => ref
