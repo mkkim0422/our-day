@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>그날 우리 — 푸시 알림 정리</title>
+<style>
+  :root{
+    --rose:#D86A92; --cream:#F8F2F7; --ink:#2B2230; --sub:#7A6E80;
+    --line:#EADDE8; --chip:#FBEEF4; --warn:#B23A48; --ok:#2E8B6F;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+    color:var(--ink);background:#fff;line-height:1.6;}
+  header{background:linear-gradient(135deg,#D86A92,#C98BC0);color:#fff;padding:32px 24px;}
+  header h1{margin:0 0 6px;font-size:24px;}
+  header p{margin:0;opacity:.92;font-size:14px;}
+  main{max-width:1080px;margin:0 auto;padding:24px;}
+  h2{font-size:19px;margin:34px 0 12px;padding-bottom:8px;border-bottom:2px solid var(--line);}
+  h3{font-size:15px;margin:20px 0 8px;color:var(--rose);}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0 18px;}
+  th,td{border:1px solid var(--line);padding:9px 10px;text-align:left;vertical-align:top;}
+  th{background:var(--chip);font-weight:700;white-space:nowrap;}
+  td code{background:var(--cream);padding:1px 5px;border-radius:4px;font-size:12px;}
+  .tag{display:inline-block;background:var(--chip);color:var(--rose);border:1px solid var(--line);
+    border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;}
+  .note{background:var(--cream);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:14px 0;font-size:13px;}
+  .warn{background:#FDEFF1;border:1px solid #F3C9CF;border-left:4px solid var(--warn);
+    border-radius:10px;padding:14px 16px;margin:14px 0;font-size:13px;}
+  .warn b{color:var(--warn);}
+  .ok{color:var(--ok);font-weight:700;}
+  ul{margin:8px 0;padding-left:20px;}
+  li{margin:4px 0;font-size:13px;}
+  .meta{color:var(--sub);font-size:12px;}
+  footer{color:var(--sub);font-size:12px;text-align:center;padding:24px;border-top:1px solid var(--line);margin-top:30px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>📸 그날 우리 — 푸시 알림 정리</h1>
+  <p>현재 코드 기준(<code>lib/services/notifications/notification_service.dart</code>) · 작성 2026-06-29</p>
+</header>
+<main>
+
+  <div class="note">
+    모든 알림은 <b>기기 로컬에서 예약</b>됩니다(서버·FCM 미사용, 외부로 데이터 전송 없음).
+    채널은 <code>reminders</code> / “촬영 리마인더”(중요도 High), 발송 방식은
+    <code>zonedSchedule</code> + <code>inexactAllowWhileIdle</code>(배터리 친화 — 정확한 분초가 아니라
+    약간의 지연이 있을 수 있음).
+  </div>
+
+  <h2>1. 알림 종류 한눈에 보기</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>종류</th><th>발송 기준</th><th>시각 · 주기</th>
+        <th>제목 / 내용</th><th>탭하면</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td><span class="tag">주기 촬영</span></td>
+        <td>프로젝트의 촬영 주기 설정.<br><span class="meta">‘직접(manual)’은 알림 없음</span></td>
+        <td>다음 주기 시각(기본 <b>오전 10시</b>)<br>매일·매주·격주·매월·매년·지정일</td>
+        <td>제목: 페그별(“이번 기간 한 컷 📸” 등)<br>내용: “오늘 «제목» 한 컷 어때요? 같은 포즈로 그날의 우리를 남겨요.”</td>
+        <td>촬영 화면(곧장)</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td><span class="tag">회상(기념일)</span></td>
+        <td>과거 촬영 사진과 <b>같은 월·일</b>이 되는 날.<br><span class="meta">같은 날짜는 1건으로 묶음 · 프로젝트당 최대 8건</span></td>
+        <td>그 월·일 <b>오전 10시</b> · 매년</td>
+        <td>제목: “그날의 우리”<br>내용(1년): “작년 오늘, 가족은 이런 모습이었어요. 다시 한 컷 남겨볼까요?”<br>내용(N년): “N년 전 오늘의 기록이 있어요. 같은 포즈로 다시 찍어봐요.”</td>
+        <td><b>추억 사진 상세</b> → “같은 구도로 한 컷”</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td><span class="tag">연말 리캡</span></td>
+        <td>올해 촬영이 <b>2컷 이상</b>일 때</td>
+        <td><b>12/31 저녁 7시</b> · 매년</td>
+        <td>제목: “올해의 우리 🎞️”<br>내용: “«제목» 올해 기록이 모였어요. 한 해의 변화를 타임랩스로 돌아볼까요?”</td>
+        <td>비교 · 타임랩스 화면</td>
+      </tr>
+      <tr>
+        <td>4a</td>
+        <td><span class="tag">생일 페그</span></td>
+        <td>이벤트 페그에 ‘생일’ 포함 + 주인공 생일 설정됨</td>
+        <td>생일 월·일 <b>오전 10시</b> · 매년</td>
+        <td>제목: “오늘은 우리 기념일 🎂”<br>내용: “«제목» 생일이에요. 같은 포즈로 한 컷 남겨볼까요?”</td>
+        <td>촬영 화면</td>
+      </tr>
+      <tr>
+        <td>4b</td>
+        <td><span class="tag">명절 페그</span></td>
+        <td>이벤트 페그에 ‘명절’ 포함</td>
+        <td>다음 <b>설날·추석</b> 오전 10시<br><span class="meta">2025~2035 양력 표 내장</span></td>
+        <td>제목: “명절, 가족이 모인 날 🏡”<br>내용: “온 가족이 모인 오늘, «제목» 한 컷 어때요?”</td>
+        <td>촬영 화면</td>
+      </tr>
+      <tr>
+        <td>4c</td>
+        <td><span class="tag">계절 페그</span></td>
+        <td>이벤트 페그에 ‘계절’ 포함</td>
+        <td>봄 3/1·여름 6/1·가을 9/1·겨울 12/1 <b>오전 10시</b></td>
+        <td>제목: “계절이 바뀌었어요 🍃”<br>내용: “새 계절의 첫날, «제목» 한 컷으로 변화를 남겨요.”</td>
+        <td>촬영 화면</td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td><span class="tag">위치 회상</span></td>
+        <td>위치 회상 ON + 추억 장소 <b>반경 안</b>에 도착 + 쿨다운(기본 6시간) 지남</td>
+        <td><b>즉시</b>(앱 시작/복귀 시 위치 판정)</td>
+        <td>제목: “여기, 그때 우리 📍”<br>내용: “«장소»에서 찍은 추억이 있어요. 같은 구도로 다시 한 컷 남겨볼까요?”</td>
+        <td><b>추억 사진 상세</b> → “같은 구도로 한 컷”</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2. 발송 방법 · 동작 원리</h2>
+  <h3>예약 방식</h3>
+  <ul>
+    <li>전부 <b>로컬 예약 알림</b>입니다(서버 푸시/FCM 없음). 비행기모드여도 예약 시각에 뜹니다.</li>
+    <li>안드로이드 모드 <code>inexactAllowWhileIdle</code> — 배터리 절약(Doze) 영향으로 <b>정확한 분 단위는 보장되지 않음</b>(보통 같은 시간대 내 발송).</li>
+    <li>알림별로 고유 ID 범위를 두어 서로 덮어쓰지 않음:
+      <code>주기</code> / <code>회상 ×8</code> / <code>리캡</code> / <code>생일</code> / <code>명절</code> / <code>계절</code> / <code>위치회상</code>.</li>
+  </ul>
+
+  <h3>언제 (재)예약되나</h3>
+  <ul>
+    <li>프로젝트 생성 시, 사진 촬영(정렬 조정·백필) 시, 사진 삭제 시 → 기존 예약을 모두 취소하고 <b>다음 1회분을 다시</b> 예약합니다.</li>
+    <li>즉 주기 알림은 “다음 한 번”만 걸려 있습니다. <b>앱을 가끔 열거나 촬영을 해 줘야 그다음 주기가 갱신</b>됩니다(장기간 미사용 시 알림이 끊길 수 있음 — 개선 후보).</li>
+  </ul>
+
+  <h3>한도 · 끄기 · 권한</h3>
+  <ul>
+    <li>iOS 예약 한도(64개)를 고려해 회상 알림은 프로젝트당 <b>최대 8건</b>.</li>
+    <li>프로젝트별로 알림 끄기 가능(<code>scheduleConfig.push = false</code>면 그 프로젝트 알림 전체 미예약).</li>
+    <li>알림 권한(Android 13+/iOS)은 첫 진입에 강요하지 않고 사용자 흐름에서 요청.</li>
+  </ul>
+
+  <div class="note">
+    <b>최근 개선(2026-06-29):</b> ① 같은 월·일 회상 알림이 여러 장이면 한 건으로 묶어 <b>중복 발송 제거</b>(대표는 가장 최근 사진 → “작년 오늘” 우선).
+    ② 회상·위치 알림 탭 시 <b>추억 사진을 먼저 보여주고</b> 거기서 “같은 구도로 한 컷”으로 촬영 진입(전엔 바로 카메라).
+  </div>
+
+  <h2>3. ⚠️ 데이터 백업 — 현재 상태</h2>
+  <div class="warn">
+    <b>지금은 클라우드 백업도, 앱 내 백업/복원 UI도 없습니다.</b>
+    모든 사진·기록은 <b>기기 안(앱 저장영역)</b>에만 있습니다. 따라서
+    <b>폰 교체 · 앱 삭제 · 기기 분실 시 데이터가 모두 사라집니다.</b>
+    <br><br>
+    백업/복원 <i>로직</i>(로컬 ZIP)과 계정 테이블은 코드에 준비되어 있으나
+    <b>화면에 연결되어 있지 않아 사용자가 쓸 수 없는 상태</b>입니다.
+    설정 화면에는 “클라우드 자동 백업은 준비 중”이라고만 표시됩니다.
+    → 안전한 보관을 위해 <b>로그인 + 클라우드 백업(또는 최소한 로컬 백업 내보내기/복원 UI) 도입이 필요</b>합니다.
+  </div>
+
+</main>
+<footer>
+  그날 우리 · 매달 한 컷, 그날의 우리 · 문의 help@sphinfo.co.kr
+</footer>
+</body>
+</html>
