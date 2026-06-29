@@ -3,6 +3,8 @@
     <!-- 다크모드 폰에서도 Android 12+ 스플래시 배경을 브랜드 연핑크로(검정 방지). -->
     <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowSplashScreenBackground">@color/brand_terracotta</item>
+        <!-- 그라데이션 원반 대신 투명 배경의 카메라 모티프만 올려 배경과 이음새 없게. -->
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
         <item name="android:windowBackground">@drawable/launch_background</item>
     </style>
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">

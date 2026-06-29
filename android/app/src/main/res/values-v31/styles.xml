@@ -4,6 +4,9 @@
          이 버전부터는 launch_background 드로어블 대신 이 속성이 우선 적용된다. -->
     <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowSplashScreenBackground">@color/brand_terracotta</item>
+        <!-- 어댑티브 아이콘(그라데이션 원반)을 그대로 쓰면 단색 배경과 색이 튄다.
+             스플래시엔 투명 배경의 카메라 모티프(전경)만 올려 배경과 이음새 없게. -->
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
         <item name="android:windowBackground">@drawable/launch_background</item>
     </style>
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
