@@ -21,7 +21,8 @@ class StoryPreviewScreen extends StatefulWidget {
 class _StoryPreviewScreenState extends State<StoryPreviewScreen> {
   final _scanner = const GalleryScanService();
 
-  bool _loading = true;
+  bool _loading = true; // 1단계(날짜 모으기) 전까지만 true → 곧 스토리 표시
+  bool _locating = false; // 2단계(위치 읽기) 백그라운드 진행 중
   bool _denied = false;
   String? _error;
   int _progress = 0;
@@ -62,6 +63,17 @@ class _StoryPreviewScreenState extends State<StoryPreviewScreen> {
         return;
       }
       final result = await _scanner.scan(
+        // 1단계: 날짜만 모이면 즉시 스토리 표시(위치는 백그라운드로 채움).
+        onDatesReady: (datePhotos) {
+          if (!mounted) return;
+          setState(() {
+            _photos = datePhotos;
+            _loading = false;
+            _locating = true;
+          });
+          _recompute();
+        },
+        // 2단계: 위치 읽기 진행률(느린 부분).
         onProgress: (done, total) {
           if (!mounted) return;
           setState(() {
@@ -73,8 +85,9 @@ class _StoryPreviewScreenState extends State<StoryPreviewScreen> {
       if (!mounted) return;
       setState(() {
         _result = result;
-        _photos = result.photos;
+        _photos = result.photos; // 위치까지 반영된 최종본
         _loading = false;
+        _locating = false;
       });
       _recompute();
     } catch (e) {
@@ -200,8 +213,10 @@ class _StoryPreviewScreenState extends State<StoryPreviewScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _summaryCard(_result!, diag),
-        const SizedBox(height: 16),
+        if (_locating) _locatingBanner(),
+        if (_locating) const SizedBox(height: 12),
+        if (_result != null) _summaryCard(_result!, diag),
+        if (_result != null) const SizedBox(height: 16),
         _controls(diag),
         const SizedBox(height: 16),
         if (_stories.isEmpty)
@@ -215,6 +230,38 @@ class _StoryPreviewScreenState extends State<StoryPreviewScreen> {
               '한 달 동안 많이 찍힌 달을 통째로 묶음(예: 2024년 5월).'),
         ],
       ],
+    );
+  }
+
+  /// 위치 읽기 백그라운드 진행 배너(날짜 스토리는 이미 보이는 상태).
+  Widget _locatingBanner() {
+    final scheme = Theme.of(context).colorScheme;
+    final pct = _progressTotal == 0 ? null : (_progress * 100 ~/ _progressTotal);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              pct == null
+                  ? '위치 정보 읽는 중… (여행 이름은 다 읽은 뒤 채워져요)'
+                  : '위치 정보 읽는 중  $_progress / $_progressTotal  ($pct%)',
+              style: TextStyle(
+                  fontSize: 13, color: scheme.onPrimaryContainer),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

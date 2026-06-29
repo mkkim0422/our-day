@@ -43,10 +43,19 @@ class GalleryScanService {
   Future<PermissionState> requestPermission() =>
       PhotoManager.requestPermissionExtend();
 
-  /// 갤러리 **전체**를 스캔. [onProgress]는 느린 부분(새 사진 GPS 읽기) 기준으로
-  /// 진행을 보고한다(done/총 새사진수). 새 사진이 없으면 즉시 끝난다.
+  /// 갤러리 **전체**를 스캔.
+  ///
+  /// 2단계로 동작해 체감 속도를 끌어올린다:
+  ///  1) **날짜만** 먼저 모아 [onDatesReady]로 즉시 넘긴다(파일을 안 열어 빠름).
+  ///     화면은 여기서 바로 날짜 기반 스토리(어느 날·이달)를 보여줄 수 있다.
+  ///  2) 그다음 캐시에 없는 새 사진의 **GPS를 병렬로** 읽어(_kConcurrency 동시)
+  ///     위치(여행 이름)를 채운다. [onProgress]는 이 느린 단계의 진행(done/새사진).
+  ///
+  /// 안드로이드 스코프 스토리지에선 GPS가 사진마다 파일을 열어 EXIF를 읽으므로
+  /// 본질적으로 느리다 → UI를 막지 않도록 1단계 결과를 먼저 내보낸다.
   Future<GalleryScanResult> scan({
     void Function(int done, int total)? onProgress,
+    void Function(List<StoryPhoto> datesReady)? onDatesReady,
   }) async {
     try {
       await Permission.accessMediaLocation.request();
@@ -64,36 +73,48 @@ class GalleryScanService {
     final total = await all.assetCountAsync;
     final cached = await _cache.load();
 
-    // 1) 전체 에셋을 페이지로 모은다(촬영일은 즉시 얻음 — 빠름).
+    // 1단계: 전체를 페이지로 훑어 날짜(+캐시된 위치)만 모은다 — 빠름.
     final assets = <AssetEntity>[];
-    const page = 200;
+    final photos = <StoryPhoto>[];
+    const page = 300;
     for (var start = 0; start < total; start += page) {
       final end = (start + page) > total ? total : (start + page);
-      assets.addAll(await all.getAssetListRange(start: start, end: end));
+      final list = await all.getAssetListRange(start: start, end: end);
+      for (final a in list) {
+        assets.add(a);
+        final loc = cached[a.id]; // 캐시에 있으면 위치 즉시 반영, 없으면 null
+        photos.add(StoryPhoto(
+          id: a.id,
+          takenAt: a.createDateTime,
+          lat: loc?[0],
+          lng: loc?[1],
+        ));
+      }
     }
+    // 화면이 날짜 기반 스토리를 즉시 그릴 수 있도록 스냅샷을 넘긴다.
+    onDatesReady?.call(List.of(photos));
 
-    // 2) 캐시에 없는 새 사진만 골라 GPS를 **병렬로** 읽는다(가장 느린 부분).
-    final newAssets =
-        assets.where((a) => !cached.containsKey(a.id)).toList();
+    // 2단계: 캐시에 없는 새 사진만 GPS를 병렬로 읽는다(느린 부분).
+    final newOnes = assets.where((a) => !cached.containsKey(a.id)).toList();
     final freshLoc = <String, List<double>?>{};
     var done = 0;
-    for (var i = 0; i < newAssets.length; i += _kConcurrency) {
-      final end = math.min(i + _kConcurrency, newAssets.length);
-      final chunk = newAssets.sublist(i, end);
+    for (var i = 0; i < newOnes.length; i += _kConcurrency) {
+      final to = math.min(i + _kConcurrency, newOnes.length);
+      final chunk = newOnes.sublist(i, to);
       await Future.wait(chunk.map((a) async {
         freshLoc[a.id] = await _readLoc(a);
       }));
       done += chunk.length;
-      onProgress?.call(done, newAssets.length);
+      onProgress?.call(done, newOnes.length);
     }
 
-    // 3) 캐시분 + 새로 읽은 분을 합쳐 결과/다음 캐시를 만든다.
+    // GPS를 반영한 최종 결과 + 다음 캐시.
     final next = <String, List<double>?>{}; // 이번에 본 것만 → 삭제분 정리
-    final photos = <StoryPhoto>[];
+    final full = <StoryPhoto>[];
     for (final a in assets) {
       final loc = cached.containsKey(a.id) ? cached[a.id] : freshLoc[a.id];
       next[a.id] = loc;
-      photos.add(StoryPhoto(
+      full.add(StoryPhoto(
         id: a.id,
         takenAt: a.createDateTime,
         lat: loc?[0],
@@ -101,13 +122,13 @@ class GalleryScanService {
       ));
     }
 
-    final newly = newAssets.length;
+    final newly = newOnes.length;
     if (newly > 0 || next.length != cached.length) {
       await _cache.save(next);
     }
 
     return GalleryScanResult(
-      photos: photos,
+      photos: full,
       totalInGallery: total,
       newlyIndexed: newly,
     );
