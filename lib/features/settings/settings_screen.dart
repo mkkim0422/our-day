@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../data/repositories/providers.dart';
+import '../../services/backup/cloud_backup_service.dart';
 import '../../services/backup/local_backup_service.dart';
 import '../../services/location/location_service.dart';
 import '../../services/providers.dart';
@@ -11,10 +12,11 @@ import 'app_lock.dart';
 import 'privacy_policy_screen.dart';
 import 'settings_providers.dart';
 
-/// 앱 전역 설정 — 위치 회상 · 앱 잠금 · 정보.
+/// 앱 전역 설정 — 위치 회상 · 앱 잠금 · 데이터 백업(로컬/클라우드) · 정보.
 ///
 /// 앨범별 항목(주인공 생일·구성원)은 앨범 설정으로 분리. 데이터 안전(백업)은
-/// 자체 서버 미보관 원칙(9장)에 따라 사용자 클라우드 자동 백업으로 추후 제공한다.
+/// 자체 서버 미보관 원칙(9장)에 따라 ① 로컬 .zip ② 사용자 본인 클라우드(구글
+/// 드라이브 무료 용량)로 제공하고, 용량이 차면 로컬 백업으로 유도한다.
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -24,6 +26,17 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   static const _appVersion = '1.0.0';
+
+  // 클라우드 백업 상태(구글 드라이브). 로그인/용량은 화면에서 직접 들고 갱신.
+  CloudAccount? _cloudAccount;
+  CloudQuota? _cloudQuota;
+  bool _cloudBusy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreCloud();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -84,6 +97,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onTap: _restoreFromExternal,
           ),
           _backupsList(),
+          const Divider(height: 32),
+          _sectionTitle('클라우드 백업 (구글 드라이브)'),
+          _cloudSection(),
           const Divider(height: 32),
           _sectionTitle('정보'),
           ListTile(
@@ -405,8 +421,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ref.invalidate(backupsProvider);
   }
 
-  /// 모달 진행 표시와 함께 [task] 실행. 실패 시 스낵바, 결과는 성공 시에만 반환.
-  Future<T?> _withProgress<T>(String message, Future<T> Function() task) async {
+  /// 막힘 진행 다이얼로그를 띄운다(직접 pop 책임은 호출자).
+  void _showBlockingProgress(String message) {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -426,6 +442,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  /// 모달 진행 표시와 함께 [task] 실행. 실패 시 스낵바, 결과는 성공 시에만 반환.
+  Future<T?> _withProgress<T>(String message, Future<T> Function() task) async {
+    _showBlockingProgress(message);
     try {
       final result = await task();
       if (mounted) Navigator.of(context, rootNavigator: true).pop();
@@ -443,6 +464,248 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _fmtSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
-    return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(2)} GB';
+  }
+
+  // ── 클라우드 백업(구글 드라이브) ──
+
+  /// 화면 진입 시 이전 로그인 조용히 복원 + 용량 조회.
+  Future<void> _restoreCloud() async {
+    try {
+      final acct = await ref.read(cloudBackupServiceProvider).signInSilently();
+      if (!mounted) return;
+      setState(() => _cloudAccount = acct);
+      if (acct != null) _refreshQuota();
+    } catch (_) {
+      // 조용한 복원 실패는 무시.
+    }
+  }
+
+  Future<void> _refreshQuota() async {
+    try {
+      final q = await ref.read(cloudBackupServiceProvider).quota();
+      if (mounted) setState(() => _cloudQuota = q);
+    } catch (_) {
+      // 용량 조회 실패는 표시만 생략.
+    }
+  }
+
+  Future<void> _cloudSignIn() async {
+    setState(() => _cloudBusy = true);
+    try {
+      final acct = await ref.read(cloudBackupServiceProvider).signIn();
+      if (!mounted) return;
+      setState(() => _cloudAccount = acct);
+      if (acct != null) {
+        _refreshQuota();
+        _snack('구글 드라이브에 연결했어요.');
+      }
+    } on CloudBackupException catch (e) {
+      _snack(e.message);
+    } catch (e) {
+      _snack('연결 실패: $e');
+    } finally {
+      if (mounted) setState(() => _cloudBusy = false);
+    }
+  }
+
+  Future<void> _cloudSignOut() async {
+    await ref.read(cloudBackupServiceProvider).signOut();
+    if (!mounted) return;
+    setState(() {
+      _cloudAccount = null;
+      _cloudQuota = null;
+    });
+  }
+
+  /// 로컬 zip 생성(재사용) → 드라이브 업로드. 용량 초과면 알림 + 로컬 백업 유도.
+  Future<void> _cloudBackupNow() async {
+    final local = ref.read(localBackupServiceProvider);
+    final cloud = ref.read(cloudBackupServiceProvider);
+    final notif = ref.read(notificationServiceProvider);
+
+    final path =
+        await _withProgress<String>('백업을 만들고 있어요…', local.createBackup);
+    if (path == null || !mounted) return;
+    ref.invalidate(backupsProvider);
+
+    _showBlockingProgress('구글 드라이브에 올리는 중이에요…');
+    try {
+      await cloud.upload(path);
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      _refreshQuota();
+      _snack('구글 드라이브에 백업했어요.');
+    } on CloudBackupException catch (e) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      if (e.kind == CloudErrorKind.quotaExceeded) {
+        await notif.showBackupNeeded(
+            body: '구글 드라이브 용량이 가득 찼어요. 로컬 백업(.zip)으로 안전하게 보관하세요.');
+        if (mounted) await _quotaFullDialog();
+      } else if (e.kind == CloudErrorKind.notSignedIn) {
+        if (mounted) setState(() => _cloudAccount = null);
+        _snack('다시 연결해 주세요.');
+      } else {
+        _snack(e.message);
+      }
+    } catch (e) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      _snack('업로드 실패: $e');
+    }
+  }
+
+  Future<void> _quotaFullDialog() async {
+    final make = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('클라우드 공간이 부족해요'),
+        content: const Text(
+            '구글 드라이브 무료 용량이 가득 찼어요. 대신 이 기기에 로컬 백업(.zip)을 만들어 '
+            '구글 드라이브·카톡 등으로 직접 보관할 수 있어요.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('닫기')),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('로컬 백업 만들기')),
+        ],
+      ),
+    );
+    if (make == true) await _createBackup();
+  }
+
+  Future<void> _cloudRestore() async {
+    final cloud = ref.read(cloudBackupServiceProvider);
+    final backups = await _withProgress<List<RemoteBackup>>(
+        '클라우드 백업을 불러오는 중…', cloud.list);
+    if (backups == null || !mounted) return;
+    if (backups.isEmpty) {
+      _snack('구글 드라이브에 백업이 없어요.');
+      return;
+    }
+    final picked = await showModalBottomSheet<RemoteBackup>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('복원할 백업 선택',
+                    style: Theme.of(ctx)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700)),
+              ),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final b in backups)
+                    ListTile(
+                      leading: const Icon(Icons.folder_zip_outlined),
+                      title: Text(_fmtDate(b.modifiedAt)),
+                      subtitle: Text(_fmtSize(b.sizeBytes)),
+                      onTap: () => Navigator.of(ctx).pop(b),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    final localPath = await _withProgress<String>(
+        '내려받는 중이에요…', () => cloud.download(picked));
+    if (localPath == null || !mounted) return;
+    await _restoreFromPath(localPath); // 확인·복원·재예약은 기존 로직 재사용.
+  }
+
+  Widget _cloudSection() {
+    final acct = _cloudAccount;
+    final scheme = Theme.of(context).colorScheme;
+    if (acct == null) {
+      return ListTile(
+        leading: const Icon(Icons.cloud_outlined),
+        title: const Text('구글 드라이브에 보관'),
+        subtitle: const Text('구글 계정의 무료 용량에 백업해요. 폰을 바꿔도 그대로 복원돼요.'),
+        trailing: _cloudBusy
+            ? const SizedBox(
+                width: 20, height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2))
+            : FilledButton(onPressed: _cloudSignIn, child: const Text('연결')),
+      );
+    }
+    final q = _cloudQuota;
+    final nearFull = q?.usedRatio != null && q!.usedRatio! >= 0.9;
+    return Column(
+      children: [
+        ListTile(
+          leading: Icon(Icons.cloud_done_outlined, color: scheme.primary),
+          title: Text(acct.email),
+          subtitle: Text(q == null ? '용량 확인 중…' : _quotaText(q)),
+          trailing: TextButton(
+              onPressed: _cloudSignOut, child: const Text('연결 해제')),
+        ),
+        if (q?.usedRatio != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: LinearProgressIndicator(
+              value: q!.usedRatio,
+              minHeight: 6,
+              borderRadius: BorderRadius.circular(4),
+              color: nearFull ? scheme.error : scheme.primary,
+              backgroundColor: scheme.surfaceContainerHighest,
+            ),
+          ),
+        if (nearFull)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              children: [
+                Icon(Icons.warning_amber_rounded,
+                    size: 18, color: scheme.error),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('용량이 거의 찼어요. 로컬 백업도 함께 보관하세요.',
+                      style: TextStyle(color: scheme.error, fontSize: 12)),
+                ),
+              ],
+            ),
+          ),
+        ListTile(
+          leading: const Icon(Icons.cloud_upload_outlined),
+          title: const Text('지금 클라우드에 백업'),
+          subtitle: const Text('현재 사진·기록을 드라이브에 올려요'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _cloudBackupNow,
+        ),
+        ListTile(
+          leading: const Icon(Icons.cloud_download_outlined),
+          title: const Text('클라우드에서 복원'),
+          subtitle: const Text('드라이브의 백업을 골라 되살려요'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _cloudRestore,
+        ),
+      ],
+    );
+  }
+
+  String _quotaText(CloudQuota q) {
+    final used = _fmtSize(q.usedBytes);
+    final lim = q.limitBytes;
+    if (lim == null) return '사용 중 $used';
+    final pct =
+        q.usedRatio == null ? '' : ' · ${(q.usedRatio! * 100).toStringAsFixed(0)}%';
+    return '$used / ${_fmtSize(lim)}$pct';
   }
 }

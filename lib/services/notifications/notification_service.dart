@@ -66,6 +66,9 @@ class NotificationService {
   /// iOS 64개 한도와 배터리를 고려해 회상 알림 예약 수를 제한(5장 우선순위 관리 원칙 준용).
   static const _maxNostalgia = 8;
 
+  /// 클라우드 백업 용량 부족 알림의 고정 id(다른 id 범위와 겹치지 않게 별도 대역).
+  static const _backupNeededId = 70000000;
+
   bool _ready = false;
 
   /// 앱 시작 시 1회 호출(main). 타임존 DB·플러그인 초기화 + 탭 핸들러 등록.
@@ -294,6 +297,28 @@ class NotificationService {
       payload: NotificationPayload(
               projectId: projectId, captureId: latest.id, recall: true)
           .encode(),
+    );
+  }
+
+  /// 클라우드 백업 공간이 가득 찼을 때 — 로컬 백업(.zip)으로 안전하게 보관하도록
+  /// 알린다(꽉참 즉시 알림). 탭하면 앱이 열린다(별도 라우팅 없음).
+  Future<void> showBackupNeeded({required String body}) async {
+    if (!_ready) return;
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: _channelDesc,
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
+    await _plugin.show(
+      id: _backupNeededId,
+      title: '백업 공간이 가득 찼어요',
+      body: body,
+      notificationDetails: details,
     );
   }
 

@@ -5,6 +5,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../data/repositories/providers.dart';
+import 'backup/cloud_backup_service.dart';
+import 'backup/google_drive_backup_service.dart';
 import 'backup/local_backup_service.dart';
 import 'camera/photo_storage.dart';
 import 'location/location_service.dart';
@@ -32,6 +34,14 @@ final shareServiceProvider =
 final localBackupServiceProvider = Provider<LocalBackupService>(
   (ref) => LocalBackupService(ref.watch(databaseProvider)),
 );
+
+/// 클라우드 백업(1차: 구글 드라이브). 추상화 뒤에 둬서 애플 iCloud 추가 시 교체.
+/// 로컬 백업이 만든 동일 .zip을 사용자 본인 클라우드(무료 용량)에 올린다.
+final cloudBackupServiceProvider = Provider<CloudBackupService>((ref) {
+  final svc = GoogleDriveBackupService();
+  ref.onDispose(svc.dispose);
+  return svc;
+});
 
 /// 위치 서비스 (5장). 기본은 geolocator 구현.
 final locationServiceProvider =
