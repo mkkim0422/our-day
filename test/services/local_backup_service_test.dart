@@ -9,6 +9,7 @@ import 'package:our_day/core/constants/enums.dart';
 import 'package:our_day/data/db/app_database.dart';
 import 'package:our_day/data/repositories/capture_repository.dart';
 import 'package:our_day/data/repositories/member_repository.dart';
+import 'package:our_day/data/repositories/place_repository.dart';
 import 'package:our_day/data/repositories/project_repository.dart';
 import 'package:our_day/services/backup/local_backup_service.dart';
 import 'package:path/path.dart' as p;
@@ -194,5 +195,125 @@ void main() {
         '2025-03-15T00:00:00.000');
     expect((settings['captureHeights'] as Map)[capture.id], 92.5);
     expect(settings['lockPinHash'], 'deadbeef');
+  });
+
+  test('복원 후 기능별 조회 경로가 정상 동작한다(다중 프로젝트·정렬·필터·장소·설정)',
+      () async {
+    final capturesDir = Directory(p.join(temp.path, 'captures'))
+      ..createSync(recursive: true);
+    final thumbsDir = Directory(p.join(temp.path, 'thumbs'))
+      ..createSync(recursive: true);
+    final exportsDir = Directory(p.join(temp.path, 'exports'))
+      ..createSync(recursive: true);
+
+    final projectRepo = ProjectRepository(db);
+    final captureRepo = CaptureRepository(db);
+    final memberRepo = MemberRepository(db);
+    final placeRepo = PlaceRepository(db);
+
+    Future<Capture> mkCapture(Project pj, String name, DateTime at,
+        {String? placeId}) async {
+      final photo = p.join(capturesDir.path, '$name.jpg');
+      final thumb = p.join(thumbsDir.path, '$name.jpg');
+      File(photo).writeAsBytesSync(photoBytes);
+      File(thumb).writeAsBytesSync(photoBytes);
+      return captureRepo.create(
+        project: pj,
+        filePath: photo,
+        thumbPath: thumb,
+        capturedAt: at,
+        placeId: placeId,
+      );
+    }
+
+    // 프로젝트 A: 장소·구성원·꾸민사진·사용자 정렬·키·생일.
+    final a =
+        await projectRepo.create(title: '첫째', scheduleType: ScheduleType.monthly);
+    final place = await placeRepo.create(
+        projectId: a.id, label: '할머니집', latitude: 37.5, longitude: 127.0);
+    final a1 = await mkCapture(a, 'a1', DateTime(2026, 1, 1), placeId: place.id);
+    final a2 = await mkCapture(a, 'a2', DateTime(2026, 2, 1));
+    final a3 = await mkCapture(a, 'a3', DateTime(2026, 3, 1));
+    // 사용자가 촬영일순과 다르게 직접 배치: a3, a1, a2.
+    await captureRepo.reorder([a3.id, a1.id, a2.id]);
+    final mom = await memberRepo.create(projectId: a.id, name: '엄마');
+    await memberRepo.setMembersForCapture(a2.id, [mom.id]);
+    final deco = p.join(exportsDir.path, 'a3-deco.png');
+    final decoBytes = Uint8List.fromList(List.generate(30, (i) => (i * 7) % 256));
+    File(deco).writeAsBytesSync(decoBytes);
+    await captureRepo.setDecoratedPath(a3.id, deco);
+
+    // 프로젝트 B(격리 확인).
+    final b =
+        await projectRepo.create(title: '여행', scheduleType: ScheduleType.yearly);
+    final b1 = await mkCapture(b, 'b1', DateTime(2025, 7, 7));
+
+    final settingsPath = p.join(temp.path, 'settings.json');
+    File(settingsPath).writeAsStringSync(jsonEncode({
+      'locationRecallEnabled': true,
+      'placeLastNotified': {place.id: '2026-03-02T09:00:00.000'},
+      'projectBirthdays': {a.id: '2025-12-01T00:00:00.000'},
+      'captureHeights': {a1.id: 70.0, a3.id: 80.5},
+      'lockPinHash': 'pinhash123',
+    }));
+
+    final service = LocalBackupService(db);
+    final zip = await service.createBackup();
+
+    // === 공장 초기화 흉내: 파일·설정·DB 전부 삭제 ===
+    for (final f in capturesDir.listSync()) {
+      f.deleteSync();
+    }
+    for (final f in exportsDir.listSync()) {
+      f.deleteSync();
+    }
+    File(settingsPath).deleteSync();
+    await projectRepo.delete(a.id);
+    await projectRepo.delete(b.id);
+    expect(await projectRepo.watchAll().first, isEmpty);
+
+    // === 복원 ===
+    final restored = await service.restoreFromFile(zip);
+    expect(restored, 4);
+
+    // 1) 다중 프로젝트 복원.
+    final projects = await projectRepo.watchAll().first;
+    expect(projects.map((e) => e.title).toSet(), {'첫째', '여행'});
+
+    // 2) 타임라인/타임랩스 정렬(watchByProject) = 사용자가 정한 순서.
+    final aCaps = await captureRepo.watchByProject(a.id).first;
+    expect(aCaps.map((c) => c.id).toList(), [a3.id, a1.id, a2.id]);
+
+    // 3) 모든 사진 파일 복구(비교·타임랩스가 파일을 읽음).
+    for (final c in aCaps) {
+      expect(File(c.filePath).existsSync(), isTrue);
+    }
+
+    // 4) 구성원 필터(captureIdsForMember) = a2만.
+    expect(await memberRepo.captureIdsForMember(mom.id), {a2.id});
+
+    // 5) 장소 복구 + capture의 placeId(위치 회상 경로).
+    final places = await placeRepo.watchByProject(a.id).first;
+    expect(places.single.label, '할머니집');
+    expect((await captureRepo.getById(a1.id))?.placeId, place.id);
+
+    // 6) 꾸민사진 경로·파일 복구(상세에서 꾸민 버전 표시).
+    final a3r = await captureRepo.getById(a3.id);
+    expect(a3r?.decoratedPath, deco);
+    expect(File(deco).existsSync(), isTrue);
+
+    // 7) 설정 복구(나이라벨·마일스톤·성장차트·앱잠금·위치회상).
+    final settings =
+        jsonDecode(File(settingsPath).readAsStringSync()) as Map<String, dynamic>;
+    expect(settings['locationRecallEnabled'], true);
+    expect((settings['projectBirthdays'] as Map)[a.id], '2025-12-01T00:00:00.000');
+    expect((settings['captureHeights'] as Map)[a3.id], 80.5);
+    expect((settings['placeLastNotified'] as Map)[place.id],
+        '2026-03-02T09:00:00.000');
+    expect(settings['lockPinHash'], 'pinhash123');
+
+    // 8) 프로젝트 B 격리(섞이지 않음).
+    final bCaps = await captureRepo.watchByProject(b.id).first;
+    expect(bCaps.map((c) => c.id).toList(), [b1.id]);
   });
 }

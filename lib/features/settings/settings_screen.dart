@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../data/repositories/providers.dart';
 import '../../services/backup/local_backup_service.dart';
 import '../../services/location/location_service.dart';
 import '../../services/providers.dart';
@@ -337,6 +338,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ref.invalidate(appSettingsProvider);
     ref.invalidate(backupsProvider);
 
+    // 복원된 프로젝트들의 알림을 다시 예약(복원 직후엔 예약이 비어 있으므로).
+    await _rescheduleAllNotifications();
+    if (!mounted) return;
+
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -350,6 +355,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  /// 복원 후 모든 프로젝트의 주기·회상·이벤트 알림을 다시 예약(best-effort).
+  Future<void> _rescheduleAllNotifications() async {
+    try {
+      final projects =
+          await ref.read(projectRepositoryProvider).watchAll().first;
+      final settings = await ref.read(appSettingsProvider.future);
+      final notif = ref.read(notificationServiceProvider);
+      final capRepo = ref.read(captureRepositoryProvider);
+      for (final pj in projects) {
+        final caps = await capRepo.listByProject(pj.id);
+        await notif.scheduleForProject(
+          pj,
+          caps,
+          birthday: settings.projectBirthdays[pj.id],
+        );
+      }
+    } catch (_) {
+      // 알림 재예약은 best-effort — 실패해도 복원 자체는 성공.
+    }
   }
 
   Future<void> _shareBackup(BackupFileInfo b) async {
