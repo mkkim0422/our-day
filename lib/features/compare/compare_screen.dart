@@ -171,9 +171,8 @@ class _CompareViewState extends ConsumerState<CompareView> {
           label: const Text('기기에 저장'),
         ),
         const SizedBox(height: 28),
-        // ── 성장 스토리(아이·가족 중심 자동 묶음).
-        _storiesSection(),
-        // ── 그때 vs 지금(공유 이미지). 두 시점은 탭해서 직접 고를 수 있다.
+        // ── 그때 vs 지금: 변화를 한 장으로 콕 집어 비교(공유 이미지).
+        //    타임랩스(전체 흐름) 바로 다음에 둬서 '보는 경험'을 모은다.
         Text('그때 vs 지금',
             style: Theme.of(context)
                 .textTheme
@@ -199,6 +198,8 @@ class _CompareViewState extends ConsumerState<CompareView> {
           ),
         ),
         const SizedBox(height: 32),
+        // ── 성장 스토리(아이·가족 중심 자동 묶음). 없으면 숨김.
+        _storiesSection(),
         // ── 더 보기(부가 도구는 깔끔한 메뉴로 정리 — 1차 액션은 위 타임랩스 하나).
         Text('더 보기',
             style: Theme.of(context)
