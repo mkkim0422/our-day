@@ -10,6 +10,7 @@ import '../../services/providers.dart';
 import '../compare/compare_screen.dart';
 import '../decorate/decorate_screen.dart';
 import '../home/home_providers.dart';
+import 'capture_screen.dart';
 
 /// 사진 상세 — 썸네일 탭 시 진입. **전체 사진**(잘리지 않게 contain) + 아래 정보,
 /// 좌우 **스와이프로 다른 기록 넘기기**(PageView). 각 사진마다 메모·키·나이·구성원.
@@ -340,8 +341,25 @@ class _CapturePageState extends ConsumerState<_CapturePage> {
           ),
           _memberTags(),
           const SizedBox(height: 16),
-          // 꾸미기 — 가장 눈에 띄는 1차 액션(하단·풀폭).
+          // 같은 구도로 한 컷 — 앱 핵심 루프이자 회상 알림의 마무리 액션(1차).
+          // 이 사진을 오버레이 기준으로 촬영 화면에 진입(같은 포즈 재촬영).
           FilledButton.icon(
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+            icon: const Icon(Icons.camera_alt_outlined),
+            label: const Text('같은 구도로 한 컷'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => CaptureScreen(
+                  project: widget.project,
+                  referenceCapture: widget.capture,
+                  placeId: widget.capture.placeId,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // 꾸미기(2차).
+          FilledButton.tonalIcon(
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
             icon: const Icon(Icons.auto_awesome),
             label: const Text('꾸미기'),

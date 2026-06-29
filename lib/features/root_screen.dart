@@ -9,6 +9,7 @@ import '../services/location/place_recall.dart';
 import '../services/notifications/notification_service.dart';
 import '../services/providers.dart';
 import '../services/sample/sample_seeder.dart';
+import 'capture/capture_detail_screen.dart';
 import 'capture/capture_screen.dart';
 import 'compare/compare_screen.dart';
 import 'home/album_hub_screen.dart';
@@ -202,6 +203,19 @@ class _RootScreenState extends ConsumerState<RootScreen>
         : await captureRepo.latestForProject(project.id);
     if (!context.mounted) return;
 
+    // 회상 알림(기념일·장소) → 그 추억 사진을 먼저 보여준다(감정 환기).
+    // 거기서 "같은 구도로 한 컷"을 누르면 그 사진을 오버레이 기준으로 촬영.
+    if (payload.recall && reference != null) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              CaptureDetailScreen(project: project, capture: reference),
+        ),
+      );
+      return;
+    }
+
+    // 그 외(주기·이벤트 페그 알림) → 곧장 촬영 화면.
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => CaptureScreen(

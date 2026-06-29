@@ -16,6 +16,7 @@ class NotificationPayload {
     required this.projectId,
     this.captureId,
     this.recap = false,
+    this.recall = false,
   });
 
   final String projectId;
@@ -24,8 +25,12 @@ class NotificationPayload {
   /// 연말 리캡 알림이면 true → 비교·타임랩스 화면으로 진입(아이디어6).
   final bool recap;
 
+  /// 회상 알림(기념일·장소)이면 true → 그 추억 사진을 먼저 보여주고
+  /// 거기서 "같은 구도로 한 컷"으로 잇는다(곧장 카메라로 가지 않음).
+  final bool recall;
+
   String encode() =>
-      jsonEncode({'p': projectId, 'c': captureId, 'r': recap});
+      jsonEncode({'p': projectId, 'c': captureId, 'r': recap, 'm': recall});
 
   static NotificationPayload? decode(String? raw) {
     if (raw == null || raw.isEmpty) return null;
@@ -37,6 +42,7 @@ class NotificationPayload {
         projectId: pid,
         captureId: map['c'] as String?,
         recap: map['r'] as bool? ?? false,
+        recall: map['m'] as bool? ?? false,
       );
     } catch (_) {
       return null;
@@ -152,9 +158,19 @@ class NotificationService {
     }
 
     // ② 회상 알림(다가오는 기념일 순).
-    final anniversaries = captures
-        .map((c) => (capture: c, when: ReminderTime.nextAnniversary(c.capturedAt, from)))
-        .toList()
+    //    같은 월·일에 찍은 사진이 여러 장이면 한 건으로 묶어 같은 날 중복 발송을 막는다.
+    //    대표는 가장 최근(가장 가까운 해)의 사진 → "작년 오늘" 문구가 우선되도록.
+    final byDay = <String, ({Capture capture, DateTime when})>{};
+    for (final c in captures) {
+      final when = ReminderTime.nextAnniversary(c.capturedAt, from);
+      final key = '${when.year}-${when.month}-${when.day}';
+      final existing = byDay[key];
+      if (existing == null ||
+          c.capturedAt.isAfter(existing.capture.capturedAt)) {
+        byDay[key] = (capture: c, when: when);
+      }
+    }
+    final anniversaries = byDay.values.toList()
       ..sort((a, b) => a.when.compareTo(b.when));
 
     for (var i = 0; i < anniversaries.length && i < _maxNostalgia; i++) {
@@ -167,8 +183,8 @@ class NotificationService {
             ? '작년 오늘, 가족은 이런 모습이었어요. 다시 한 컷 남겨볼까요?'
             : '$years년 전 오늘의 기록이 있어요. 같은 포즈로 다시 찍어봐요.',
         when: a.when,
-        payload:
-            NotificationPayload(projectId: project.id, captureId: a.capture.id),
+        payload: NotificationPayload(
+            projectId: project.id, captureId: a.capture.id, recall: true),
       );
     }
 
@@ -275,7 +291,8 @@ class NotificationService {
       title: '여기, 그때 우리 📍',
       body: '«${place.label}»에서 찍은 추억이 있어요. 같은 구도로 다시 한 컷 남겨볼까요?',
       notificationDetails: details,
-      payload: NotificationPayload(projectId: projectId, captureId: latest.id)
+      payload: NotificationPayload(
+              projectId: projectId, captureId: latest.id, recall: true)
           .encode(),
     );
   }
