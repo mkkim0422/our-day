@@ -9,6 +9,7 @@ import '../../services/providers.dart';
 import '../capture/backfill_screen.dart';
 import '../capture/capture_detail_screen.dart';
 import '../capture/capture_screen.dart';
+import '../compare/compare_screen.dart';
 import 'home_providers.dart';
 import 'widgets/milestone_card.dart';
 import 'widgets/progress_gauge.dart';
@@ -73,6 +74,15 @@ class HomeTab extends ConsumerWidget {
             onTap: () => _openDetail(context, milestone.capture),
           ),
         ],
+        // 변화 영상(같은 사진의 '움직이는' 버전) — 2컷 이상일 때 사진 위에.
+        // 탭하면 타임랩스·그때vs지금·성장 스토리가 한곳에(변화 영상관).
+        if (captures.length >= 2) ...[
+          const SizedBox(height: 14),
+          _ChangeFilmCard(
+            count: captures.length,
+            onTap: () => _openCompare(context),
+          ),
+        ],
         const SizedBox(height: 18),
         // 사진(주인공) — 2열로 큼직하게. 탭하면 전체화면(좌우 스와이프),
         // 길게 누르면 순서 바꾸기, 끝 타일로 '한 컷 더'.
@@ -115,6 +125,89 @@ class HomeTab extends ConsumerWidget {
   Future<void> _openBackfill(BuildContext context) async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => BackfillScreen(project: project)),
+    );
+  }
+
+  Future<void> _openCompare(BuildContext context) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => CompareScreen(project: project)),
+    );
+  }
+}
+
+/// '▶ 변화 영상 보기' 히어로 — 모은 사진의 움직이는 버전(타임랩스)으로 들어가는
+/// 단 하나의 입구. 안에 타임랩스·그때vs지금·성장 스토리가 모여 있다.
+class _ChangeFilmCard extends StatelessWidget {
+  const _ChangeFilmCard({required this.count, required this.onTap});
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final radius = BorderRadius.circular(20);
+    return Material(
+      color: Colors.transparent,
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          gradient: LinearGradient(
+            colors: [
+              scheme.primary,
+              Color.alphaBlend(
+                  Colors.white.withValues(alpha: 0.18), scheme.primary),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: scheme.primary.withValues(alpha: 0.30),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.25),
+                  ),
+                  child: const Icon(Icons.play_arrow_rounded,
+                      color: Colors.white, size: 30),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('변화 영상 보기',
+                          style: text.titleMedium?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 2),
+                      Text('$count컷의 성장을 타임랩스·비교·스토리로',
+                          style: text.bodySmall?.copyWith(
+                              color: Colors.white.withValues(alpha: 0.9))),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: Colors.white),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

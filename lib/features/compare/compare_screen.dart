@@ -37,7 +37,7 @@ class CompareScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('비교 · 타임랩스')),
+      appBar: AppBar(title: const Text('변화 영상')),
       body: CompareView(project: project),
     );
   }
