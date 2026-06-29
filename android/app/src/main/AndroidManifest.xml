@@ -15,10 +15,12 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-    <!-- 갤러리에서 비슷한 사진 찾기(photo_manager). Android 13+ / 이하 분기. -->
+    <!-- 갤러리 접근(photo_manager) — 백필·스토리 자동생성. Android 13+ / 이하 분기. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <!-- 스토리 '여행' 분류용: 사진 EXIF의 위치(GPS) 메타데이터를 읽기 위해 필요. -->
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
 
     <application
         android:label="그날 우리"
