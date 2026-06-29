@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 import 'gallery_scan_service.dart';
+import 'place_namer.dart';
 import 'story_engine.dart';
 import 'story_models.dart';
 
@@ -35,6 +36,8 @@ class _StoryPreviewScreenState extends State<StoryPreviewScreen> {
   double _dayMin = 5;
   double _monthMin = 8;
 
+  final _namer = PlaceNamer();
+
   @override
   void initState() {
     super.initState();
@@ -58,7 +61,7 @@ class _StoryPreviewScreenState extends State<StoryPreviewScreen> {
         });
         return;
       }
-      final result = await _scanner.scanRecent(
+      final result = await _scanner.scan(
         onProgress: (done, total) {
           if (!mounted) return;
           setState(() {
@@ -91,6 +94,54 @@ class _StoryPreviewScreenState extends State<StoryPreviewScreen> {
       minMonthPhotos: _monthMin.round(),
     ));
     setState(() => _stories = engine.generate(_photos, now: DateTime.now()));
+    _enrichTripPlaces();
+  }
+
+  /// 여행 스토리에 위치명을 붙인다(역지오코딩, 비동기·캐시). 좌표 평균을 조회해
+  /// "○○ 여행"/"○○에서의 추억"으로 제목을 바꾼다. 실패 시 '여행' 유지.
+  Future<void> _enrichTripPlaces() async {
+    final byId = {for (final p in _photos) p.id: p};
+    final snapshot = _stories;
+    final updated = <Story>[];
+    var changed = false;
+    for (final s in snapshot) {
+      if (s.kind != StoryKind.trip) {
+        updated.add(s);
+        continue;
+      }
+      final pts = s.photoIds
+          .map((id) => byId[id])
+          .whereType<StoryPhoto>()
+          .where((p) => p.hasLocation)
+          .toList();
+      if (pts.isEmpty) {
+        updated.add(s);
+        continue;
+      }
+      final lat = pts.fold<double>(0, (a, p) => a + p.lat!) / pts.length;
+      final lng = pts.fold<double>(0, (a, p) => a + p.lng!) / pts.length;
+      final place = await _namer.nameFor(lat, lng);
+      final days = s.end.difference(s.start).inDays + 1;
+      final title = tripTitle(place, days: days);
+      if (title == s.title) {
+        updated.add(s);
+        continue;
+      }
+      updated.add(Story(
+        kind: s.kind,
+        title: title,
+        subtitle: s.subtitle,
+        coverPhotoId: s.coverPhotoId,
+        photoIds: s.photoIds,
+        start: s.start,
+        end: s.end,
+      ));
+      changed = true;
+    }
+    // 그 사이 슬라이더로 _stories가 또 바뀌었으면 덮어쓰지 않는다.
+    if (changed && mounted && identical(_stories, snapshot)) {
+      setState(() => _stories = updated);
+    }
   }
 
   @override
@@ -121,9 +172,9 @@ class _StoryPreviewScreenState extends State<StoryPreviewScreen> {
             const SizedBox(height: 16),
             Text(_progressTotal == 0
                 ? '갤러리를 여는 중…'
-                : '사진 확인 중  $_progress / $_progressTotal  ($pct%)'),
+                : '사진 정리 중  $_progress / $_progressTotal  ($pct%)'),
             const SizedBox(height: 4),
-            const Text('위치 정보까지 읽느라 조금 걸려요',
+            const Text('처음엔 전체를 한 번 정리해요(다음부턴 새 사진만 확인해 빨라요)',
                 style: TextStyle(fontSize: 12, color: Colors.grey)),
           ],
         ),
@@ -184,7 +235,8 @@ class _StoryPreviewScreenState extends State<StoryPreviewScreen> {
                   .titleMedium
                   ?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
-          _stat('스캔한 사진', '${r.scanned}장 (전체 ${r.totalInGallery}장 중)'),
+          _stat('정리한 사진', '${r.scanned}장 (전체 ${r.totalInGallery}장)'),
+          _stat('이번에 새로 확인', '${r.newlyIndexed}장 (나머지는 저장된 색인)'),
           _stat('기간', d.range),
           _stat('위치(GPS) 있는 사진', '${r.withLocation}장'),
           const Divider(height: 18),

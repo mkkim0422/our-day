@@ -60,6 +60,8 @@ dependencies:
   file_selector: ^1.0.3
   # 갤러리에서 불러온 사진의 EXIF 촬영일을 읽어 날짜를 자동 채움(순수 Dart).
   exif: ^3.3.0
+  # 스토리 '여행' 위치명: GPS 좌표 → 지역명(OS 내장 역지오코딩, 무료).
+  geocoding: ^3.0.0
 
 dev_dependencies:
   flutter_test:
