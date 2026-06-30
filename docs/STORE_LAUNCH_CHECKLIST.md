@@ -4,9 +4,15 @@
 
 ## 현재 기준선
 - 앱 라벨 `그날 우리`, 패키지 `com.ourday.our_day`, version `1.0.0+1`, minSdk 26
-- 광고 **미연동**(빈 슬롯) · 릴리스가 **디버그 키로 서명 중**(교체 필수)
-- 개인정보처리방침 = **앱 내 화면만**(공개 URL 없음)
+- 광고 **미연동**(빈 슬롯)
+- 릴리스 서명 = **틀 완성**(key.properties 있으면 정식 키, 없으면 디버그 폴백) → 정식 키 등록만 남음
+- 난독화/축소(R8) = **활성화 완료**(`android/app/proguard-rules.pro`)
+- 개인정보처리방침/삭제안내 = **공개용 HTML 작성 완료**(`docs/privacy-policy.html`, `docs/account-deletion.html`) → 호스팅만 남음
+- 데이터 보안 양식 = **초안 완료**(`docs/DATA_SAFETY_FORM.md`)
 - 클라우드 백업 = **앱 코드 완료**, OAuth 계정 설정만 남음 (`docs/CLOUD_BACKUP_SETUP.md`)
+
+> **2026-07-01 진행분(제가, 계정 불필요)**: 서명 틀·난독화·기술점검·AAB 파이프라인·정책/삭제 페이지·데이터보안 초안 완료.
+> 산출물: `BUILD_RELEASE.md`, `TECH_REVIEW.md`, `DATA_SAFETY_FORM.md`, `privacy-policy.html`, `account-deletion.html`, `android/key.properties.template`.
 
 ## 0단계 · 출시 범위 결정
 - [ ] Android 먼저 / iOS 후속
@@ -16,27 +22,33 @@
 
 ## 1단계 · 계정·법무
 - [ ] **[회장님]** Google Play Console 등록 $25 + 본인 인증
-- [ ] **[같이]** 개인정보처리방침 공개 URL (제가 작성 → 회장님 호스팅)
-- [ ] **[같이]** 계정·데이터 삭제 경로/URL (구글 로그인 → Play 요구)
+- [~] **[같이]** 개인정보처리방침 공개 URL — 전문 작성 완료(`privacy-policy.html`), **회장님 호스팅만**
+- [~] **[같이]** 계정·데이터 삭제 경로/URL — 작성 완료(`account-deletion.html`), **회장님 호스팅만**
+
+> **호스팅 원클릭(GitHub Pages)**: `docs/` 에 `index.html`+정책 2개 준비됨.
+> GitHub repo → Settings → Pages → Source: `main` 브랜치 `/docs` 폴더 → Save.
+> 몇 분 뒤 URL 발급: `https://<계정>.github.io/<repo>/privacy-policy.html`,
+> `.../account-deletion.html` → 이 두 주소를 Play 콘솔 정책/삭제 URL 칸에 입력.
+> (repo가 비공개면 Pages 공개 설정 필요. 노션/구글사이트로 HTML 붙여넣기도 가능.)
 
 ## 2단계 · 릴리스 빌드 하드닝
-- [ ] **[같이]** 릴리스 키스토어 생성 (회장님 생성 → 제가 signingConfig 연결)
+- [~] **[같이]** 릴리스 키스토어 — signingConfig 틀+template 완료, **회장님 키 생성만**(`key.properties.template`)
 - [ ] **[회장님]** Play 앱 서명(Play App Signing)
-- [ ] **[제가]** 릴리스 키 SHA-1을 OAuth 클라이언트에 추가
-- [ ] **[제가]** AAB 빌드 (`flutter build appbundle`)
-- [ ] **[제가]** 기술점검: targetSdk 최신·16KB 정렬·versionCode·권한·난독화
+- [ ] **[제가]** 릴리스 키 SHA-1을 OAuth 클라이언트에 추가 (키스토어 생성 후)
+- [~] **[제가]** AAB 빌드 — 파이프라인 문서+디버그폴백 빌드 검증(`BUILD_RELEASE.md`). 정식 키로 재빌드만 남음
+- [x] **[제가]** 기술점검: targetSdk·16KB·versionCode·권한·난독화 → `TECH_REVIEW.md` (불필요 권한 없음 확인)
 
 ## 3단계 · 스토어 자산·리스팅
-- [ ] **[제가]** 제목/짧은(80자)/긴 설명 (ASO 반영)
+- [x] **[제가]** 제목/짧은(80자)/긴 설명 (ASO 반영) → `STORE_LISTING.md`
 - [ ] **[같이]** 스크린샷 2~8장 + 피처그래픽 1024×500 (아이콘 완료)
 - [ ] **[회장님]** 카테고리·연락 이메일
 
 ## 4단계 · 컴플라이언스
-- [ ] **[같이]** 데이터 보안(Data Safety) 양식 (제가 초안 → 회장님 제출)
-- [ ] **[회장님]** 콘텐츠 등급 설문(IARC)
-- [ ] **[회장님]** 타깃 대상 = 성인(부모)
-- [ ] **[회장님]** 광고=없음 · 위치/사진 민감권한 사용 선언
-- [ ] **[같이]** 앱 액세스(리뷰어용 로그인 안내/테스트 계정)
+- [~] **[같이]** 데이터 보안(Data Safety) 양식 — 초안 완료(`DATA_SAFETY_FORM.md`), **회장님 콘솔 입력만**
+- [~] **[회장님]** 콘텐츠 등급 설문(IARC) — 답안 초안 완료(`STORE_COMPLIANCE_ANSWERS.md` §13), 콘솔 입력만
+- [~] **[회장님]** 타깃 대상 = 성인(부모) — 권장답안·근거 완료(§14)
+- [~] **[회장님]** 광고=없음 · 위치/사진 민감권한 사용 선언 — 선언문 초안 완료(§15)
+- [~] **[같이]** 앱 액세스(리뷰어용 로그인 안내) — 안내문 초안 완료(§16)
 
 ## 5단계 · 클라우드/로그인
 - [ ] **[회장님]** OAuth 클라이언트 등록 (릴리스 SHA-1 포함, `CLOUD_BACKUP_SETUP.md`)

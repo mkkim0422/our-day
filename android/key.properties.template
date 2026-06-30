@@ -1,0 +1,13 @@
+# 릴리스 서명 키 설정 — 이 파일을 복사해 같은 폴더에 `key.properties` 로 저장하고
+# 아래 값을 실제 키스토어 정보로 채우세요. (key.properties 는 절대 git 에 올리지 마세요.)
+#
+# 키스토어 만들기 (회장님, 한 번만 / 비밀번호·파일 안전 보관 필수):
+#   keytool -genkey -v -keystore our-day-release.jks \
+#     -keyalg RSA -keysize 2048 -validity 10000 -alias our-day
+#   → 생성된 our-day-release.jks 를 android/ 폴더에 둡니다.
+#   ⚠️ 이 키스토어를 잃어버리면 앱 업데이트를 영원히 못 합니다. 백업 2곳 이상.
+
+storeFile=our-day-release.jks
+storePassword=여기에_키스토어_비밀번호
+keyAlias=our-day
+keyPassword=여기에_키_비밀번호

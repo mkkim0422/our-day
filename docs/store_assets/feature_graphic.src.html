@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"/>
+<style>
+  html,body{margin:0;padding:0;width:1024px;height:500px;overflow:hidden;}
+  .stage{width:1024px;height:500px;position:relative;
+    background:linear-gradient(120deg,#F2ADC8 0%,#C4A2E0 100%);
+    font-family:"Malgun Gothic","Noto Sans KR",sans-serif;}
+  /* 부드러운 광택 */
+  .glow{position:absolute;width:760px;height:760px;border-radius:50%;
+    background:radial-gradient(circle,rgba(255,255,255,.35),rgba(255,255,255,0) 60%);
+    left:-160px;top:-230px;}
+  .wrap{position:absolute;inset:0;display:flex;align-items:center;gap:54px;
+    padding:0 88px;box-sizing:border-box;}
+  .logo{flex:0 0 auto;filter:drop-shadow(0 14px 30px rgba(74,58,68,.28));}
+  .txt{color:#4A3A44;}
+  .title{font-size:96px;font-weight:800;letter-spacing:-2px;line-height:1;
+    color:#3E2E38;text-shadow:0 2px 0 rgba(255,255,255,.35);}
+  .tag{margin-top:22px;font-size:33px;font-weight:600;line-height:1.45;color:#5A4753;}
+  .pill{display:inline-block;margin-top:26px;padding:11px 22px;border-radius:100px;
+    background:rgba(255,255,255,.55);color:#9B3A60;font-weight:700;font-size:25px;}
+</style></head>
+<body>
+  <div class="stage">
+    <div class="glow"></div>
+    <div class="wrap">
+      <div class="logo">
+        <!-- app_logo.dart 비율 그대로(100단위) -->
+        <svg width="240" height="240" viewBox="0 0 100 100">
+          <!-- 본체+뷰파인더(크림) -->
+          <rect x="40.5" y="27.5" width="19" height="9" rx="3" fill="#FFF7FB"/>
+          <rect x="20" y="33.5" width="60" height="39" rx="8" fill="#FFF7FB"/>
+          <!-- 플래시 -->
+          <circle cx="71" cy="43" r="2.6" fill="#B85178"/>
+          <!-- 렌즈: 딥로즈 링 → 크림 디스크 → 하트 -->
+          <circle cx="50" cy="54" r="15.5" fill="#B85178"/>
+          <circle cx="50" cy="54" r="12.2" fill="#FFF7FB"/>
+          <path d="M50 59.25 C42.25 53.75 43.5 48 50 53 C56.5 48 57.75 53.75 50 59.25 Z"
+                fill="#B85178"/>
+        </svg>
+      </div>
+      <div class="txt">
+        <div class="title">그날 우리</div>
+        <div class="tag">매달 한 컷, 같은 구도로 남기는<br/>우리 아이 성장사진</div>
+        <div class="pill">오버레이 카메라 · 성장 타임랩스</div>
+      </div>
+    </div>
+  </div>
+</body></html>

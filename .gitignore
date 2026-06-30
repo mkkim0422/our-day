@@ -39,6 +39,11 @@ app.*.symbols
 # Obfuscation related
 app.*.map.json
 
+# 릴리스 서명 비밀 — 절대 커밋 금지 (key.properties.template 만 커밋)
+**/android/key.properties
+**/*.jks
+**/*.keystore
+
 # Android Studio will place build artifacts here
 /android/app/debug
 /android/app/profile
