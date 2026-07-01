@@ -84,6 +84,7 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
 
   /// '직접' 주기: 달력에서 촬영 날짜를 골라 목록에 추가(중복 방지·정렬).
   Future<void> _addFixedDate() async {
+    FocusScope.of(context).unfocus();
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
@@ -104,6 +105,7 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
   }
 
   Future<void> _pickBirthday() async {
+    FocusScope.of(context).unfocus();
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
@@ -140,9 +142,14 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
     final text = Theme.of(context).textTheme;
     return Scaffold(
       appBar: AppBar(title: const Text('새 기록 시작')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
+      // 이름 입력 외의 곳(빈 여백·라벨)을 누르면 포커스를 거둬 자판을 내린다.
+      // 칩/스위치처럼 자체 탭을 먹는 위젯은 각 콜백에서 따로 unfocus 한다.
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
           Text('무엇을 기록할까요?', style: text.titleMedium),
           const SizedBox(height: 4),
           Text('예: 우리 가족, 첫째 아이, 여행, 생일',
@@ -165,7 +172,10 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
           const SizedBox(height: 12),
           _ScheduleSelector(
             value: _scheduleType,
-            onChanged: (v) => setState(() => _scheduleType = v),
+            onChanged: (v) {
+              FocusScope.of(context).unfocus();
+              setState(() => _scheduleType = v);
+            },
           ),
           if (_scheduleType == ScheduleType.fixedDates) ...[
             const SizedBox(height: 12),
@@ -213,13 +223,16 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
                 const SizedBox(height: 12),
                 _EventPegSelector(
                   selected: _eventPegs,
-                  onToggle: (peg) => setState(() {
-                    if (_eventPegs.contains(peg)) {
-                      _eventPegs.remove(peg);
-                    } else {
-                      _eventPegs.add(peg);
-                    }
-                  }),
+                  onToggle: (peg) {
+                    FocusScope.of(context).unfocus();
+                    setState(() {
+                      if (_eventPegs.contains(peg)) {
+                        _eventPegs.remove(peg);
+                      } else {
+                        _eventPegs.add(peg);
+                      }
+                    });
+                  },
                 ),
                 const SizedBox(height: 24),
                 Align(
@@ -254,7 +267,10 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
                   child: SwitchListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     value: _pushEnabled,
-                    onChanged: (v) => setState(() => _pushEnabled = v),
+                    onChanged: (v) {
+                      FocusScope.of(context).unfocus();
+                      setState(() => _pushEnabled = v);
+                    },
                     title: const Text('알림 받기'),
                     subtitle: Text(
                       '선택한 주기와 특별한 날에 알림을 보내드릴까요?',
@@ -287,7 +303,8 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
                   : const Text('시작하기'),
             ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }
