@@ -20,6 +20,11 @@ class NewProjectScreen extends ConsumerStatefulWidget {
 class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
   final _titleController = TextEditingController();
   ScheduleType _scheduleType = ScheduleType.monthly;
+  // 주기 기준일(엔진 reminder_time이 config로 읽음). 기본은 오늘 기준이지만
+  // 사용자가 직접 고를 수 있다: 매주=요일, 매월=며칠, 매년=몇 월·며칠.
+  int _weekday = DateTime.now().weekday; // 1=월 ~ 7=일
+  int _dayOfMonth = DateTime.now().day; // 매월·매년 공통 '며칠'
+  int _month = DateTime.now().month; // 매년 '몇 월'
   final List<DateTime> _fixedDates = []; // '직접' 선택 시 고른 촬영 날짜들
   final Set<EventPeg> _eventPegs = {}; // 다중 선택(비어 있으면 '없음')
   DateTime? _birthday; // 주인공 생일(선택, 아이디어1 나이 라벨용)
@@ -150,17 +155,16 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
   /// 주기 유형별 기본 schedule_config(2장). 푸시는 모두 **아침 10시**.
   /// 세부 설정은 추후 설정 화면에서 조정.
   Map<String, dynamic> _defaultConfig(ScheduleType type) {
-    final now = DateTime.now();
     switch (type) {
       case ScheduleType.daily:
         return {'time': '10:00'};
       case ScheduleType.weekly:
       case ScheduleType.biweekly:
-        return {'weekday': now.weekday, 'time': '10:00'};
+        return {'weekday': _weekday, 'time': '10:00'};
       case ScheduleType.monthly:
-        return {'day': now.day, 'time': '10:00'};
+        return {'day': _dayOfMonth, 'time': '10:00'};
       case ScheduleType.yearly:
-        return {'month': now.month, 'day': now.day, 'time': '10:00'};
+        return {'month': _month, 'day': _dayOfMonth, 'time': '10:00'};
       case ScheduleType.fixedDates:
       case ScheduleType.manual:
         return {'time': '10:00'};
@@ -207,6 +211,44 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
               setState(() => _scheduleType = v);
             },
           ),
+          // 주기 기준일 선택 — 언제를 기준으로 알릴지 사용자가 직접 고른다.
+          if (_scheduleType == ScheduleType.weekly) ...[
+            const SizedBox(height: 12),
+            _WeekdayPicker(
+              value: _weekday,
+              onChanged: (v) => setState(() => _weekday = v),
+            ),
+          ],
+          if (_scheduleType == ScheduleType.monthly) ...[
+            const SizedBox(height: 12),
+            _DayOfMonthPicker(
+              label: '매월 며칠에 찍을까요?',
+              value: _dayOfMonth,
+              onChanged: (v) => setState(() => _dayOfMonth = v),
+            ),
+          ],
+          if (_scheduleType == ScheduleType.yearly) ...[
+            const SizedBox(height: 12),
+            _MonthPicker(
+              value: _month,
+              onChanged: (v) => setState(() => _month = v),
+            ),
+            const SizedBox(height: 12),
+            _DayOfMonthPicker(
+              label: '며칠에?',
+              value: _dayOfMonth,
+              onChanged: (v) => setState(() => _dayOfMonth = v),
+            ),
+          ],
+          if (_scheduleType == ScheduleType.manual) ...[
+            const SizedBox(height: 8),
+            Text(
+              '정해진 알림 없이 원할 때 찍어요. 생일 같은 특별한 날만 챙기려면 '
+              '아래 ‘선택 항목 더보기’에서 골라주세요.',
+              style: text.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ],
           if (_scheduleType == ScheduleType.fixedDates) ...[
             const SizedBox(height: 12),
             Wrap(
@@ -337,13 +379,15 @@ class _ScheduleSelector extends StatelessWidget {
   final ScheduleType value;
   final ValueChanged<ScheduleType> onChanged;
 
-  // 화면에 노출할 주기(격주 제외). '직접'은 달력에서 날짜를 직접 고르는 fixedDates.
+  // 화면에 노출할 주기(격주 제외). '직접'은 날짜를 골라 채우는 fixedDates,
+  // '자유롭게'는 정기 알림 없는 manual(특별한 날만 챙기고 싶을 때).
   static const _shown = [
     ScheduleType.daily,
     ScheduleType.weekly,
     ScheduleType.monthly,
     ScheduleType.yearly,
     ScheduleType.fixedDates,
+    ScheduleType.manual,
   ];
   static const _labels = {
     ScheduleType.daily: '매일',
@@ -351,6 +395,7 @@ class _ScheduleSelector extends StatelessWidget {
     ScheduleType.monthly: '매월',
     ScheduleType.yearly: '매년',
     ScheduleType.fixedDates: '직접',
+    ScheduleType.manual: '자유롭게',
   };
 
   @override
@@ -394,6 +439,135 @@ class _EventPegSelector extends StatelessWidget {
           onSelected: (_) => onToggle(e),
         );
       }).toList(),
+    );
+  }
+}
+
+/// 주기 기준일 선택 위젯들의 공통 왼쪽 정렬 라벨.
+class _FieldLabel extends StatelessWidget {
+  const _FieldLabel(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: Alignment.centerLeft,
+        child: Text(text,
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(fontWeight: FontWeight.w700)),
+      );
+}
+
+/// 매주: 무슨 요일에 찍을지(월~일 → weekday 1~7).
+class _WeekdayPicker extends StatelessWidget {
+  const _WeekdayPicker({required this.value, required this.onChanged});
+  final int value;
+  final ValueChanged<int> onChanged;
+  static const _names = ['월', '화', '수', '목', '금', '토', '일'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _FieldLabel('무슨 요일에 찍을까요?'),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (var i = 0; i < 7; i++)
+              ChoiceChip(
+                label: Text(_names[i]),
+                selected: value == i + 1,
+                onSelected: (_) => onChanged(i + 1),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// 매년: 몇 월에 찍을지(1~12월).
+class _MonthPicker extends StatelessWidget {
+  const _MonthPicker({required this.value, required this.onChanged});
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _FieldLabel('몇 월에 찍을까요?'),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (var mth = 1; mth <= 12; mth++)
+              ChoiceChip(
+                label: Text('$mth월'),
+                selected: value == mth,
+                onSelected: (_) => onChanged(mth),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// 매월/매년: 며칠에 찍을지(1~31). 그 날이 없는 달은 말일에 알림
+/// (reminder_time._clampDay가 말일로 보정).
+class _DayOfMonthPicker extends StatelessWidget {
+  const _DayOfMonthPicker({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+  final String label;
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _FieldLabel(label),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: value,
+              isExpanded: true,
+              items: [
+                for (var d = 1; d <= 31; d++)
+                  DropdownMenuItem(value: d, child: Text('$d일')),
+              ],
+              onChanged: (v) {
+                if (v != null) onChanged(v);
+              },
+            ),
+          ),
+        ),
+        if (value >= 29) ...[
+          const SizedBox(height: 4),
+          Text('$value일이 없는 달은 그 달 마지막 날에 알려드려요.',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: scheme.onSurfaceVariant)),
+        ],
+      ],
     );
   }
 }
