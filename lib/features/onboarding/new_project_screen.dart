@@ -104,6 +104,26 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
     }
   }
 
+  /// '특별한 날' 생일 칩 토글. 생일은 날짜가 있어야 알림이 예약되므로
+  /// (notification_service: birthday != null 조건), 칩을 켜는 순간 주인공 생일
+  /// 날짜가 없으면 그 자리에서 날짜를 받고, 취소하면 칩도 켜지 않는다 →
+  /// '생일 챙기기'를 골랐는데 조용히 무효가 되던 허점을 막는다.
+  Future<void> _toggleEventPeg(EventPeg peg) async {
+    FocusScope.of(context).unfocus();
+    final adding = !_eventPegs.contains(peg);
+    if (adding && peg == EventPeg.birthday && _birthday == null) {
+      await _pickBirthday();
+      if (_birthday == null) return; // 날짜를 안 고르면 생일 칩은 켜지 않는다.
+    }
+    setState(() {
+      if (adding) {
+        _eventPegs.add(peg);
+      } else {
+        _eventPegs.remove(peg);
+      }
+    });
+  }
+
   Future<void> _pickBirthday() async {
     FocusScope.of(context).unfocus();
     final now = DateTime.now();
@@ -224,16 +244,7 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
                 const SizedBox(height: 12),
                 _EventPegSelector(
                   selected: _eventPegs,
-                  onToggle: (peg) {
-                    FocusScope.of(context).unfocus();
-                    setState(() {
-                      if (_eventPegs.contains(peg)) {
-                        _eventPegs.remove(peg);
-                      } else {
-                        _eventPegs.add(peg);
-                      }
-                    });
-                  },
+                  onToggle: _toggleEventPeg,
                 ),
                 const SizedBox(height: 24),
                 Align(
