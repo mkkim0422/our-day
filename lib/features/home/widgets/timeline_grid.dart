@@ -151,7 +151,9 @@ class _ReorderScreenState extends State<_ReorderScreen>
   void _move(int from, int to) {
     setState(() {
       final item = _order.removeAt(from);
-      _order.insert(from < to ? to - 1 : to, item);
+      // 끌어다 놓은 칸(to)의 자리로 그대로 이동(스왑형). 예전의 `to-1` 보정은
+      // 바로 다음 칸으로 끌 때 원위치와 같아져 "이동 안 됨"이 됐다.
+      _order.insert(to, item);
       _changed = true;
     });
   }
@@ -202,6 +204,11 @@ class _ReorderScreenState extends State<_ReorderScreen>
                 onPressed: () => Navigator.of(context).pop(_order),
                 style: FilledButton.styleFrom(
                   visualDensity: VisualDensity.compact,
+                  // 테마 기본 minimumSize가 Size.fromHeight(52)=너비 무한이라
+                  // AppBar actions(가로 제약 무한)에선 버튼·제목이 깨진다.
+                  // 이 버튼만 너비를 유한값으로 덮어 정상 표시.
+                  minimumSize: const Size(64, 40),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
                 ),
                 child: const Text('저장'),
               ),

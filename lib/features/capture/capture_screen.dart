@@ -5,12 +5,11 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 
-import '../../core/utils/photo_date.dart';
 import '../../data/db/app_database.dart';
 import '../../services/camera/camera_service.dart';
 import '../../services/providers.dart';
+import '../home/home_providers.dart';
 import 'alignment_adjuster_screen.dart';
 import 'widgets/guide_grid.dart';
 
@@ -40,7 +39,6 @@ class CaptureScreen extends ConsumerStatefulWidget {
 class _CaptureScreenState extends ConsumerState<CaptureScreen>
     with WidgetsBindingObserver {
   final _camera = CameraService();
-  final _picker = ImagePicker();
 
   bool _initializing = true;
   bool _permissionDenied = false;
@@ -48,6 +46,10 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
   double _overlayOpacity = 0.45; // 기본 40~50% (4장)
   bool _showOverlay = true;
   bool _busy = false;
+
+  /// 겹쳐 볼 기준 사진. 기본은 가장 최근 컷(widget.referenceCapture)이고,
+  /// 아래 사진 버튼으로 '내가 찍은 사진들' 중 다른 컷으로 바꿀 수 있다.
+  Capture? _reference;
 
   // 기본 카메라 기능: 줌·탭포커스·플래시·전후면.
   double _baseZoom = 1.0;
@@ -62,12 +64,13 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
   int? _countdown; // 카운트다운 중 남은 초(null이면 비활성)
   Timer? _countdownTimer;
 
-  String? get _referencePath => widget.referenceCapture?.filePath;
+  String? get _referencePath => _reference?.filePath;
   bool get _hasReference => _referencePath != null;
 
   @override
   void initState() {
     super.initState();
+    _reference = widget.referenceCapture;
     WidgetsBinding.instance.addObserver(this);
     _setup();
   }
@@ -234,15 +237,31 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
     }
   }
 
-  /// 입력경로 2: 갤러리에서 불러오기(②-1). 동일하게 정렬 조정 후 저장.
-  /// 예전 사진이 많으므로 날짜는 사진 EXIF 촬영일에서 가져온다(없으면 오늘).
-  Future<void> _pickFromGallery() async {
+  /// 겹쳐 볼 기준 사진을 '내가 찍은 사진들'(이 프로젝트 기록)에서 고른다.
+  /// 폰 갤러리 전체가 아니라 앱에 쌓인 컷 중에서 골라 같은 포즈로 이어 찍게.
+  /// (예전 사진을 새로 채우려면 앨범 ⋮ '예전 사진 채우기'를 쓴다.)
+  Future<void> _pickReference() async {
     if (_busy) return;
-    final picked = await _picker.pickImage(source: ImageSource.gallery);
-    if (picked == null) return;
-    final taken = await readPhotoTakenDate(picked.path);
-    if (!mounted) return;
-    await _openAdjuster(picked.path, capturedAt: taken);
+    final caps =
+        ref.read(capturesProvider(widget.project.id)).value ?? const <Capture>[];
+    if (caps.isEmpty) {
+      _snack('아직 겹쳐 볼 사진이 없어요.');
+      return;
+    }
+    final picked = await showModalBottomSheet<Capture>(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) =>
+          _ReferencePicker(captures: caps, selectedId: _reference?.id),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _reference = picked;
+        _showOverlay = true;
+      });
+    }
   }
 
   /// 카메라 촬영은 capturedAt=now(방금 찍음), 갤러리 불러오기는 EXIF 촬영일을 넘긴다.
@@ -561,10 +580,9 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
                   iconSize: 32,
                   icon: const Icon(Icons.photo_library_outlined,
                       color: Colors.white),
-                  tooltip: '갤러리에서 불러오기',
-                  onPressed: (_busy || _countdown != null)
-                      ? null
-                      : _pickFromGallery,
+                  tooltip: '겹쳐 볼 사진 고르기',
+                  onPressed:
+                      (_busy || _countdown != null) ? null : _pickReference,
                 ),
                 _ShutterButton(busy: _busy, onTap: _onShutterTap),
                 _TimerButton(
@@ -573,6 +591,94 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
                   onTap: _cycleTimer,
                 ),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 겹쳐 볼 기준 사진 고르기 — 폰 갤러리 전체가 아니라 '이 프로젝트에서 내가
+/// 찍은 컷'만 그리드로 보여주고, 고르면 그 사진을 반투명 오버레이 기준으로 쓴다.
+class _ReferencePicker extends StatelessWidget {
+  const _ReferencePicker({required this.captures, this.selectedId});
+
+  final List<Capture> captures;
+  final String? selectedId;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.7,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Row(
+                children: [
+                  Icon(Icons.layers, size: 20, color: scheme.primary),
+                  const SizedBox(width: 8),
+                  Text('겹쳐 볼 사진 고르기',
+                      style: text.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w800)),
+                ],
+              ),
+            ),
+            Flexible(
+              child: GridView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                itemCount: captures.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                  childAspectRatio: 0.78,
+                ),
+                itemBuilder: (context, i) {
+                  final c = captures[i];
+                  final selected = c.id == selectedId;
+                  final img = File(c.thumbPath);
+                  return InkWell(
+                    onTap: () => Navigator.of(context).pop(c),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: selected
+                                  ? Border.all(color: scheme.primary, width: 3)
+                                  : null,
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: img.existsSync()
+                                  ? Image.file(img, fit: BoxFit.cover)
+                                  : ColoredBox(
+                                      color: scheme.surfaceContainerHighest),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(c.periodLabel,
+                            style: text.labelSmall,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center),
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
           ],
         ),

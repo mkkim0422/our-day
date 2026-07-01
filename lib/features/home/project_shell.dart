@@ -77,7 +77,10 @@ class ProjectShell extends ConsumerWidget {
   Future<void> _openCapture(
       BuildContext context, WidgetRef ref, Project project) async {
     final caps = ref.read(capturesProvider(project.id)).value ?? const [];
-    final latest = caps.isNotEmpty ? caps.first : null;
+    // 겹쳐 보기 기준 = 가장 최근에 찍은 날짜의 컷(표시 순서와 무관).
+    final latest = caps.isEmpty
+        ? null
+        : caps.reduce((a, b) => a.capturedAt.isAfter(b.capturedAt) ? a : b);
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) =>

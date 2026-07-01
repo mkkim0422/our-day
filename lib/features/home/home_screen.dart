@@ -12,6 +12,8 @@ import '../capture/capture_screen.dart';
 import '../compare/compare_screen.dart';
 import 'home_providers.dart';
 import 'widgets/milestone_card.dart';
+// ProgressGauge 위젯은 더 이상 화면에 쓰지 않지만, 이번 기간 촬영 여부 판정
+// 헬퍼(hasCaptureInCurrentPeriod)가 이 파일에 있어 import는 유지한다.
 import 'widgets/progress_gauge.dart';
 import 'widgets/timeline_grid.dart';
 
@@ -49,7 +51,10 @@ class HomeTab extends ConsumerWidget {
     //    → ③ 성장 현황(보조). 촬영은 FAB, 예전 사진·설정은 ⋮ 메뉴가 담당.
     //    (비교/타임랩스는 상단 '다시보기' 탭이 입구 — 중복 입구를 두지 않는다.)
     final done = hasCaptureInCurrentPeriod(project, captures, now);
-    final latest = captures.first;
+    // 촬영 시 겹쳐 보일 기준: 표시 순서(첫 칸)가 아니라 '가장 최근에 찍은 날짜'의
+    // 사진. 순서를 바꿔도 늘 마지막 컷 위에 이어 찍도록(킬러 기능 4장).
+    final latest = captures
+        .reduce((a, b) => a.capturedAt.isAfter(b.capturedAt) ? a : b);
     final birthday =
         ref.watch(appSettingsProvider).value?.projectBirthdays[project.id];
     final milestone = (birthday != null && captures.length >= 2)
@@ -95,9 +100,6 @@ class HomeTab extends ConsumerWidget {
               .read(captureRepositoryProvider)
               .reorder(ordered.map((c) => c.id).toList()),
         ),
-        const SizedBox(height: 24),
-        // 보조 정보: 누적·연속·기간 점(사진을 본 뒤 가볍게).
-        ProgressGauge(project: project, captures: captures, now: now),
         const SizedBox(height: 16),
         const AdSlot(placement: AdPlacement.homeBanner),
       ],
