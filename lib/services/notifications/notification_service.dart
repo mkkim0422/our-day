@@ -147,17 +147,33 @@ class NotificationService {
     // 기존 예약만 지우고 새로 걸지 않는다.
     if (project.scheduleConfig['push'] == false) return;
 
-    // ① 주기 알림.
-    final due = ReminderTime.nextPeriodReminder(
-        project.scheduleType, project.scheduleConfig, from);
-    if (due != null) {
-      await _zonedSchedule(
-        id: _periodId(project.id),
-        title: _periodTitle(project),
-        body: '오늘 «${project.title}» 한 컷 어때요? 같은 포즈로 그날의 우리를 남겨요.',
-        when: due,
-        payload: NotificationPayload(projectId: project.id),
-      );
+    // ① 주기 알림. 매주는 선택한 요일마다 별도 슬롯으로(다중 요일), 그 외
+    //    유형은 다음 기간 1건. (촬영/앱 실행 때 재예약되며 다음 회차가 다시 걸림)
+    const periodBody = '오늘 한 컷 어때요? 같은 포즈로 그날의 우리를 남겨요.';
+    if (project.scheduleType == ScheduleType.weekly) {
+      for (final wd
+          in ReminderTime.weeklyWeekdays(project.scheduleConfig, from)) {
+        await _zonedSchedule(
+          id: _periodSlotId(project.id, wd),
+          title: _periodTitle(project),
+          body: '오늘 «${project.title}» $periodBody',
+          when: ReminderTime.nextWeekdayReminder(
+              project.scheduleConfig, wd, from),
+          payload: NotificationPayload(projectId: project.id),
+        );
+      }
+    } else {
+      final due = ReminderTime.nextPeriodReminder(
+          project.scheduleType, project.scheduleConfig, from);
+      if (due != null) {
+        await _zonedSchedule(
+          id: _periodId(project.id),
+          title: _periodTitle(project),
+          body: '오늘 «${project.title}» $periodBody',
+          when: due,
+          payload: NotificationPayload(projectId: project.id),
+        );
+      }
     }
 
     // ② 회상 알림(다가오는 기념일 순).
@@ -326,6 +342,10 @@ class NotificationService {
   Future<void> cancelForProject(String projectId) async {
     if (!_ready) return;
     await _plugin.cancel(id: _periodId(projectId));
+    // 매주 다중 요일 슬롯(요일 1~7)도 모두 취소.
+    for (var wd = 1; wd <= 7; wd++) {
+      await _plugin.cancel(id: _periodSlotId(projectId, wd));
+    }
     await _plugin.cancel(id: _recapId(projectId));
     await _plugin.cancel(id: _birthdayPegId(projectId));
     await _plugin.cancel(id: _holidayPegId(projectId));
@@ -380,6 +400,9 @@ class NotificationService {
 
   // 알림 ID: 프로젝트별 결정적 분배(주기 1건 + 회상 N건이 안 겹치게).
   int _periodId(String projectId) => (projectId.hashCode & 0x7fffffff) % 1000000;
+  // 매주 다중 요일 주기 알림 ID — 요일(1~7)별 별도 슬롯(70000000 범위).
+  int _periodSlotId(String projectId, int weekday) =>
+      70000000 + ((projectId.hashCode & 0x7fffffff) % 1000000) * 10 + weekday;
   int _nostalgiaId(String projectId, int index) =>
       1000000 + ((projectId.hashCode & 0x7fffffff) % 1000000) * 10 + index;
   // 장소 회상 알림 ID — 예약 알림 ID 영역과 겹치지 않게 별도 범위.

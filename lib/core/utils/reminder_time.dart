@@ -23,8 +23,10 @@ class ReminderTime {
         if (!c.isAfter(from)) c = c.add(const Duration(days: 1));
         return c;
       case ScheduleType.weekly:
-        final weekday = (config['weekday'] as int?) ?? from.weekday;
-        return _nextWeekday(from, weekday, h, m);
+        // 다중 요일 중 가장 가까운 시각(단일 'weekday'만 있으면 그것 하나).
+        return weeklyWeekdays(config, from)
+            .map((wd) => _nextWeekday(from, wd, h, m))
+            .reduce((a, b) => a.isBefore(b) ? a : b);
       case ScheduleType.biweekly:
         final weekday = (config['weekday'] as int?) ?? from.weekday;
         var next = _nextWeekday(from, weekday, h, m);
@@ -72,6 +74,35 @@ class ReminderTime {
           _clampDay(from.year + 1, past.month, past.day), hour, minute);
     }
     return candidate;
+  }
+
+  /// 매주 선택된 요일들(1=월 ~ 7=일, 정렬·중복제거). 다중 선택 지원:
+  /// config['weekdays'](List) 우선 → 없으면 단일 config['weekday'] →
+  /// 그것도 없으면 [from]의 요일 하나. 항상 최소 1개를 돌려준다.
+  static List<int> weeklyWeekdays(Map<String, dynamic> config, DateTime from) {
+    final raw = config['weekdays'];
+    if (raw is List) {
+      final days = raw
+          .map((e) => e is int ? e : int.tryParse('$e'))
+          .whereType<int>()
+          .where((d) => d >= 1 && d <= 7)
+          .toSet()
+          .toList()
+        ..sort();
+      if (days.isNotEmpty) return days;
+    }
+    final single = config['weekday'] as int?;
+    return [single ?? from.weekday];
+  }
+
+  /// 특정 요일의 다음 알림 시각([from] 이후). 매주 다중 요일 예약에 사용.
+  static DateTime nextWeekdayReminder(
+    Map<String, dynamic> config,
+    int weekday,
+    DateTime from,
+  ) {
+    final (h, m) = _time(config['time'] as String?);
+    return _nextWeekday(from, weekday, h, m);
   }
 
   // --- 내부 헬퍼 ---

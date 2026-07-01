@@ -22,7 +22,7 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
   ScheduleType _scheduleType = ScheduleType.monthly;
   // 주기 기준일(엔진 reminder_time이 config로 읽음). 기본은 오늘 기준이지만
   // 사용자가 직접 고를 수 있다: 매주=요일, 매월=며칠, 매년=몇 월·며칠.
-  int _weekday = DateTime.now().weekday; // 1=월 ~ 7=일
+  final Set<int> _weekdays = {DateTime.now().weekday}; // 매주(다중), 1=월~7=일
   int _dayOfMonth = DateTime.now().day; // 매월·매년 공통 '며칠'
   int _month = DateTime.now().month; // 매년 '몇 월'
   final List<DateTime> _fixedDates = []; // '직접' 선택 시 고른 촬영 날짜들
@@ -41,7 +41,9 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
       _titleController.text.trim().isNotEmpty &&
       !_saving &&
       // '직접' 주기인데 날짜를 하나도 안 고르면 알림 설정이 깨지므로 막는다.
-      (_scheduleType != ScheduleType.fixedDates || _fixedDates.isNotEmpty);
+      (_scheduleType != ScheduleType.fixedDates || _fixedDates.isNotEmpty) &&
+      // '매주'인데 요일을 하나도 안 고르면 알림이 안 잡히므로 막는다.
+      (_scheduleType != ScheduleType.weekly || _weekdays.isNotEmpty);
 
   Future<void> _create() async {
     final title = _titleController.text.trim();
@@ -159,8 +161,12 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
       case ScheduleType.daily:
         return {'time': '10:00'};
       case ScheduleType.weekly:
+        return {'weekdays': _weekdays.toList()..sort(), 'time': '10:00'};
       case ScheduleType.biweekly:
-        return {'weekday': _weekday, 'time': '10:00'};
+        return {
+          'weekday': _weekdays.isEmpty ? DateTime.now().weekday : _weekdays.first,
+          'time': '10:00',
+        };
       case ScheduleType.monthly:
         return {'day': _dayOfMonth, 'time': '10:00'};
       case ScheduleType.yearly:
@@ -215,8 +221,15 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
           if (_scheduleType == ScheduleType.weekly) ...[
             const SizedBox(height: 12),
             _WeekdayPicker(
-              value: _weekday,
-              onChanged: (v) => setState(() => _weekday = v),
+              selected: _weekdays,
+              onToggle: (v) => setState(() {
+                // 다중 선택. 마지막 하나는 남겨 요일 0개가 되지 않게.
+                if (_weekdays.contains(v)) {
+                  if (_weekdays.length > 1) _weekdays.remove(v);
+                } else {
+                  _weekdays.add(v);
+                }
+              }),
             ),
           ],
           if (_scheduleType == ScheduleType.monthly) ...[
@@ -458,11 +471,11 @@ class _FieldLabel extends StatelessWidget {
       );
 }
 
-/// 매주: 무슨 요일에 찍을지(월~일 → weekday 1~7).
+/// 매주: 무슨 요일에 찍을지(월~일 → weekday 1~7). 여러 요일 다중 선택 가능.
 class _WeekdayPicker extends StatelessWidget {
-  const _WeekdayPicker({required this.value, required this.onChanged});
-  final int value;
-  final ValueChanged<int> onChanged;
+  const _WeekdayPicker({required this.selected, required this.onToggle});
+  final Set<int> selected;
+  final ValueChanged<int> onToggle;
   static const _names = ['월', '화', '수', '목', '금', '토', '일'];
 
   @override
@@ -470,17 +483,17 @@ class _WeekdayPicker extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _FieldLabel('무슨 요일에 찍을까요?'),
+        const _FieldLabel('무슨 요일에 찍을까요? (여러 개 선택 가능)'),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: [
             for (var i = 0; i < 7; i++)
-              ChoiceChip(
+              FilterChip(
                 label: Text(_names[i]),
-                selected: value == i + 1,
-                onSelected: (_) => onChanged(i + 1),
+                selected: selected.contains(i + 1),
+                onSelected: (_) => onToggle(i + 1),
               ),
           ],
         ),
