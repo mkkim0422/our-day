@@ -40,6 +40,16 @@ class _BackfillScreenState extends ConsumerState<BackfillScreen> {
   final List<_BackfillItem> _items = [];
   bool _saving = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // 진입하자마자 갤러리를 연다 — 안내만 있는 빈 화면을 한 번 더 누르게 하던
+    // 불필요한 단계 제거. 아무것도 안 고르면 아래 _empty() 안내로 폴백된다.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _pick();
+    });
+  }
+
   Future<void> _pick() async {
     final picked = await _picker.pickMultiImage();
     if (picked.isEmpty) {
