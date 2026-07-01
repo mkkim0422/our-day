@@ -102,6 +102,7 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
           ..sort();
       });
     }
+    _unfocusSoon();
   }
 
   /// '특별한 날' 생일 칩 토글. 생일은 날짜가 있어야 알림이 예약되므로
@@ -135,6 +136,15 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
       helpText: '주인공 생일',
     );
     if (picked != null) setState(() => _birthday = picked);
+    _unfocusSoon();
+  }
+
+  /// 달력 등 모달을 닫으면 FocusScope가 직전 포커스(제목 입력창)를 복원해
+  /// autofocus 자판이 다시 열린다. 다음 프레임에 포커스를 거둬 이를 막는다.
+  void _unfocusSoon() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) FocusScope.of(context).unfocus();
+    });
   }
 
   /// 주기 유형별 기본 schedule_config(2장). 푸시는 모두 **아침 10시**.
