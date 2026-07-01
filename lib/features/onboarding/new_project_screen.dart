@@ -205,10 +205,11 @@ class _NewProjectScreenState extends ConsumerState<NewProjectScreen> {
             ),
           ],
           const SizedBox(height: 16),
-          // 선택 항목은 접어서 — 이름·주기만으로 바로 시작 가능(30초 가입).
+          // 선택 항목(특별한 날·생일·알림)을 처음부터 펼쳐 보여준다.
           Theme(
             data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
             child: ExpansionTile(
+              initiallyExpanded: true,
               tilePadding: EdgeInsets.zero,
               childrenPadding: const EdgeInsets.only(top: 4, bottom: 8),
               title: const Text('선택 항목 더보기'),
